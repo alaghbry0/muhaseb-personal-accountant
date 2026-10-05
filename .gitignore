@@ -52,3 +52,23 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# ── بيانات مؤقتة وغير مهمة (مستبعدة من المستودع) ──
+# مخرجات أدوات QA واللقطات المؤقتة
+/tool-results/
+/tmp-q/
+/.qa/
+# مستندات عمل الوكلاء الداخلية
+/agent-ctx/
+# بنى بيئة التشغيل (sandbox) وسكربتها المؤقتة
+/.zscripts/
+/tests/
+/download/
+/examples/
+# نسخ قاعدة البيانات الاحتياطية (يبقى db/custom.db فقط)
+/db/backups/
+# ملفات PID مؤقتة
+*.pid
+
+# الاستثناء: نموذج متغيرات البيئة يُرفع للمستودع
+!.env.example

@@ -3,10 +3,15 @@
 /**
  * DS-22 — ListRow: صف قائمة — عنوان + سطر ثانوي + مبلغ/شارة في الطرف + فاصل رفيع.
  * ارتفاع ≥ 64px، الـ chevron في نهاية الصف (يسار الشاشة في RTL).
+ *
+ * ملاحظة HTML: الصف القابل للنقر يُصيَّر <div role="button"> وليس <button>،
+ * لأن الأبناء (children/trailing) قد يحتون أزراراً (واتساب/تعديل/شراء…) —
+ * وتداخل <button> داخل <button> غير صالح في HTML ويسبب أخطاء hydration.
+ * الوصولية محفوظة: tabIndex + تشغيل Enter/Space.
  */
 import { cn } from "@/lib/utils";
 import { ChevronLeft } from "lucide-react";
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 
 interface ListRowProps {
   title: ReactNode;
@@ -36,14 +41,26 @@ export function ListRow({
   children,
 }: ListRowProps) {
   const showChevron = chevron ?? Boolean(onClick);
-  const Tag = onClick ? "button" : "div";
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (!onClick) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onClick();
+    }
+  };
   return (
-    <Tag
-      type={onClick ? "button" : undefined}
-      onClick={onClick}
+    <div
+      {...(onClick
+        ? {
+            role: "button",
+            tabIndex: 0,
+            onClick,
+            onKeyDown: handleKeyDown,
+          }
+        : {})}
       className={cn(
         "flex min-h-16 w-full items-center gap-3 px-4 py-3 text-start transition-colors",
-        onClick && "cursor-pointer hover:bg-accent/30 active:bg-accent/50",
+        onClick && "cursor-pointer hover:bg-accent/30 active:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
         divider && "border-b border-border/60",
         className
       )}
@@ -60,6 +77,6 @@ export function ListRow({
       {showChevron && (
         <ChevronLeft className="size-4 shrink-0 text-muted-foreground" aria-hidden />
       )}
-    </Tag>
+    </div>
   );
 }

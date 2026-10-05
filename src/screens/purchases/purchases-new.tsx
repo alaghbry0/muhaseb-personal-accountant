@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  Truck, PackageSearch, Trash2, Minus, Plus, Loader2, Coins, Warehouse as WarehouseIcon,
+  Truck, PackageSearch, Trash2, Minus, Plus, Loader2, Coins,
   Wallet, UserRound, Save, Info,
 } from "lucide-react";
 import { getJson, postJson } from "@/lib/api";
@@ -267,7 +267,7 @@ export default function PurchasesNewScreen({
         >
           {warehouses.map((w) => (
             <option key={w.id} value={w.id}>
-              <WarehouseIcon className="size-4" /> {w.name}
+              {w.name}
             </option>
           ))}
         </select>
