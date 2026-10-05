@@ -1,25 +1,26 @@
 "use client";
 
 /**
- * بطاقة صنف — رأس (اسم + باركود مع نسخ + شارة فئة) + شبكة أرصدة لكل مخزن
- * + بطاقات أسعار البيع لكل عملة + التكلفة (WAC) + مبيعات 30 يوماً
- * + آخر 10 حركات + إجراءات: تعديل / أرشفة / جرد سريع / طباعة ملصق باركود.
+ * بطاقة صنف — رأس (اسم + شارة فئة) + قسم الباركود (SVG Code128 + نسخ + طباعة ملصقات)
+ * + شبكة أرصدة لكل مخزن + بطاقات أسعار البيع لكل عملة + التكلفة (WAC) + مبيعات 30 يوماً
+ * + آخر 10 حركات + إجراءات: تعديل / أرشفة / جرد سريع.
  */
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   Copy, Pencil, Archive, ClipboardCheck, Printer, Boxes, Loader2,
-  TrendingDown, Warehouse as WarehouseIcon, Coins,
+  TrendingDown, Warehouse as WarehouseIcon, Coins, Barcode as BarcodeIcon,
 } from "lucide-react";
 import { getJson, postJson, patchJson } from "@/lib/api";
 import { formatAmount, formatDate, formatTime12 } from "@/lib/format";
+import { code128Svg, barcodeDisplayText } from "@/lib/barcode";
+import { printLabelSheet, labelPriceText, LABELS_MAX } from "@/components/print/label-print";
 import { useNav } from "@/lib/nav";
 import type { BootstrapData as BootType } from "@/lib/types";
 import {
-  AppHeader, AppCard, SectionTitle, KeyValueRow, PrimaryButton, StatusChip,
+  AppHeader, AppCard, SectionTitle, KeyValueRow, PrimaryButton, StatusChip, EmptyState,
 } from "@/components/ds";
-import { printBarcodeLabel } from "@/components/print/receipt-print";
 import { PosSheet } from "@/components/pos/pos-sheet";
 import { cn } from "@/lib/utils";
 
@@ -90,6 +91,8 @@ export default function InventoryProductCardScreen({
   const [stocktakeWh, setStocktakeWh] = useState<number | null>(null);
   const [countedQty, setCountedQty] = useState("");
   const [busy, setBusy] = useState(false);
+  const [labelOpen, setLabelOpen] = useState(false);
+  const [labelCount, setLabelCount] = useState("24");
 
   const { data, isLoading } = useQuery<ProductCardResponse>({
     queryKey: ["product", id],
@@ -116,6 +119,8 @@ export default function InventoryProductCardScreen({
   const p = data.product;
   const company = boot?.company;
   const basePrice = p.prices.find((pr) => pr.code === boot?.baseCurrency?.code)?.price;
+  const baseCurrencyCode = boot?.baseCurrency?.code;
+  const labelCountNum = Math.min(LABELS_MAX, Math.max(1, Math.floor(Number(labelCount)) || 0));
 
   async function copyBarcode() {
     if (!p.barcode) return;
@@ -207,20 +212,6 @@ export default function InventoryProductCardScreen({
             {p.isArchived && <StatusChip status="void" label="مؤرشف" />}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {p.barcode ? (
-              <button
-                type="button"
-                onClick={copyBarcode}
-                aria-label="نسخ الباركود"
-                className="font-num flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-2 py-1 text-[12.5px] text-muted-foreground hover:text-foreground"
-                dir="ltr"
-              >
-                {p.barcode}
-                <Copy className="size-3.5" aria-hidden />
-              </button>
-            ) : (
-              <span className="text-[12px] text-muted-foreground">بلا باركود</span>
-            )}
             {p.categoryName && <StatusChip status="completed" label={p.categoryName} />}
             {p.unitName && <span className="text-[12px] text-muted-foreground">وحدة: {p.unitName}</span>}
           </div>
@@ -247,6 +238,59 @@ export default function InventoryProductCardScreen({
             <p className="rounded-lg bg-[#FBBF24]/10 px-3 py-2 text-[12.5px] font-medium text-[#FBBF24]">
               تحت الحد الأدنى ({formatAmount(p.minStock, { decimals: 0, showSymbol: false })}) — راجع التنبيهات أو أنشئ فاتورة شراء
             </p>
+          )}
+        </AppCard>
+
+        {/* الباركود */}
+        <AppCard className="p-4">
+          <SectionTitle className="mb-2">
+            <span className="flex items-center gap-1.5">
+              <BarcodeIcon className="size-4 text-muted-foreground" aria-hidden /> الباركود
+            </span>
+          </SectionTitle>
+          {p.barcode ? (
+            <>
+              <div className="rounded-xl border border-border bg-card p-3">
+                {/* SVG حقيقي Code128 — الأعمدة currentColor فتتبع الثيم تلقائياً */}
+                <div
+                  dir="ltr"
+                  className="text-foreground [&>svg]:mx-auto [&>svg]:block"
+                  dangerouslySetInnerHTML={{
+                    __html: code128Svg(p.barcode, { height: 64, showText: true }),
+                  }}
+                />
+                {/* استثناء مقصود لشكل الأرقام (FR-13-05): أرقام الباركود تبقى غربية دائماً
+                    حتى في الوضع الهندي — واقع المسح الضوئي — لذا بلا formatAmount */}
+                <div className="mt-2 flex items-center justify-center gap-2">
+                  <span
+                    dir="ltr"
+                    className="font-num text-[13.5px] font-bold tracking-widest text-muted-foreground"
+                  >
+                    {barcodeDisplayText(p.barcode)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={copyBarcode}
+                    aria-label="نسخ الباركود"
+                    className="flex items-center gap-1 rounded-lg border border-border bg-muted/50 px-2 py-1 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <Copy className="size-3.5" aria-hidden /> نسخ
+                  </button>
+                </div>
+              </div>
+              <div className="mt-2">
+                <PrimaryButton block onClick={() => setLabelOpen(true)}>
+                  <Printer className="size-5" aria-hidden /> طباعة ملصقات
+                </PrimaryButton>
+              </div>
+            </>
+          ) : (
+            <EmptyState
+              icon={BarcodeIcon}
+              message="لا باركود لهذا الصنف"
+              hint="يُولَّد تلقائياً عند حفظ صنف جديد"
+              className="py-8"
+            />
           )}
         </AppCard>
 
@@ -370,27 +414,13 @@ export default function InventoryProductCardScreen({
         </AppCard>
 
         {/* الإجراءات */}
-        <div className="grid grid-cols-2 gap-2">
-          <PrimaryButton variant="outline" onClick={() => setStocktakeOpen(true)}>
-            <ClipboardCheck className="size-5" aria-hidden /> جرد سريع
-          </PrimaryButton>
+        <div>
           <PrimaryButton
+            block
             variant="outline"
-            onClick={() =>
-              printBarcodeLabel(
-                { name: p.name, barcode: p.barcode, price: basePrice, currencyCode: boot?.baseCurrency?.code },
-                {
-                  company: {
-                    name: company?.name ?? "المتجر",
-                    phone: company?.phone ?? null,
-                    address: company?.address ?? null,
-                    footerText: company?.footerText ?? null,
-                  },
-                }
-              )
-            }
+            onClick={() => setStocktakeOpen(true)}
           >
-            <Printer className="size-5" aria-hidden /> ملصق باركود
+            <ClipboardCheck className="size-5" aria-hidden /> جرد سريع
           </PrimaryButton>
         </div>
         <PrimaryButton
@@ -482,6 +512,104 @@ export default function InventoryProductCardScreen({
             اعتماد الجرد
           </PrimaryButton>
         </div>
+      </PosSheet>
+
+      {/* لوحة طباعة الملصقات */}
+      <PosSheet
+        open={labelOpen}
+        onOpenChange={setLabelOpen}
+        title="طباعة ملصقات الباركود"
+        description={p.barcode ? `ملصقات رف «${p.name}» — شبكة A4 بقياس 63×25مم` : undefined}
+      >
+        {p.barcode ? (
+          <div className="flex flex-col gap-3 pb-2">
+            <div>
+              <label className="mb-1 block text-[13px] font-medium text-muted-foreground" htmlFor="label-count">
+                عدد الملصقات
+              </label>
+              <input
+                id="label-count"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={LABELS_MAX}
+                dir="ltr"
+                value={labelCount}
+                onChange={(e) => setLabelCount(e.target.value.replace(/\D/g, "").slice(0, 3))}
+                className="font-num h-14 w-full rounded-xl border border-border bg-muted/60 px-3 text-[18px] font-bold text-foreground outline-none focus:border-primary/70"
+              />
+              <p className="mt-1 text-[11.5px] text-muted-foreground">
+                كل صفحة A4 تتسع لـ 24 ملصقاً (3×8) — حتى {LABELS_MAX} ملصقاً
+              </p>
+            </div>
+
+            {/* معاينة ملصق واحد — ورقة بيضاء دائماً (حبر على ورق) في الوضعين */}
+            <div>
+              <span className="mb-1 block text-[13px] font-medium text-muted-foreground">معاينة الملصق</span>
+              <div
+                dir="rtl"
+                className="mx-auto flex w-[240px] flex-col items-center gap-0.5 rounded-md border border-dashed border-[#94A3B8] bg-white p-2 text-[#0F172A] shadow-sm"
+              >
+                <span className="max-w-full truncate text-[8.5px] leading-tight text-[#475569]">
+                  {company?.name ?? "المتجر"}
+                </span>
+                <span className="line-clamp-2 max-w-full text-center text-[10px] font-extrabold leading-snug">
+                  {p.name}
+                </span>
+                <div
+                  dir="ltr"
+                  className="mt-0.5 h-7 w-full text-black [&>svg]:block [&>svg]:h-full [&>svg]:w-full"
+                  dangerouslySetInnerHTML={{
+                    __html: code128Svg(p.barcode, { showText: false }),
+                  }}
+                />
+                {/* أرقام الباركود غربية دائماً (استثناء المسح الضوئي) — بلا formatAmount */}
+                <span dir="ltr" className="font-num text-[10px] font-bold tracking-widest">
+                  {barcodeDisplayText(p.barcode)}
+                </span>
+                {basePrice != null && (
+                  <span className="font-num text-[11px] font-extrabold">
+                    {labelPriceText(basePrice, baseCurrencyCode)}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <PrimaryButton
+              block
+              disabled={labelCountNum < 1}
+              onClick={() =>
+                printLabelSheet({
+                  company: company
+                    ? {
+                        name: company.name,
+                        phone: company.phone,
+                        address: company.address,
+                        footerText: company.footerText,
+                      }
+                    : null,
+                  product: {
+                    name: p.name,
+                    // داخل رد النداء لا يضيّق TS التعبير الشرطي أعلاه — الباركود مثبت وجوده هنا
+                    barcode: p.barcode!,
+                    price: basePrice,
+                    currencyCode: baseCurrencyCode ?? undefined,
+                  },
+                  count: labelCountNum,
+                })
+              }
+            >
+              <Printer className="size-5" aria-hidden /> طباعة
+            </PrimaryButton>
+          </div>
+        ) : (
+          <EmptyState
+            icon={BarcodeIcon}
+            message="لا باركود لهذا الصنف"
+            hint="يُولَّد تلقائياً عند حفظ صنف جديد"
+            className="py-8"
+          />
+        )}
       </PosSheet>
     </div>
   );

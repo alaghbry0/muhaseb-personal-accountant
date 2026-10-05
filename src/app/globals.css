@@ -208,3 +208,58 @@
     margin: 0;
   }
 }
+
+/* ══════════ DS-11: الثيم الفاتح — بدائل الألوان الحرفية (Task 8-a) ══════════ */
+/*
+ * غالبية الواجهة تُعاد تلوينها تلقائياً عبر متغيرات :root الفاتحة أعلاه
+ * (bg-background/bg-card/text-foreground/border-border/…). هذا القسم يعالج فقط
+ * المرافق الحرفية (text-[#34D399] ونظائرها) الموزعة على عشرات الشاشات —
+ * تُعاد صياغتها هنا دون تعديل أي ملف شاشة.
+ * القسم خارج أي @layer ⇒ أولويته أعلى من طبقة utilities فيفوز دائماً.
+ *
+ * تركت عمداً دون تغيير:
+ * - خلفيات الإكسسوارات الصلبة (#34D399/#F87171/#FBBF24/#22D3EE/#06202B) وتظليلاتها
+ *   /N: رقائق الهوية بنص داكن (#052e1c/#2b0707/#2b1a02/#06202B) مقروءة في الوضعين،
+ *   ونقاط مفاتيح الرسوم يجب أن تطابق strokes الرسوم البيانية (حد معروف مقبول).
+ * - أخضر واتساب #25D366 (لون علامة تجارية).
+ * - حبر «معاينة الإيصال» في إعدادات الطباعة (#334155/#CBD5E1/#F1F5F9/#94A3B8):
+ *   يمثل ورق إيصال حراري فيبدو صحيحاً في الوضعين.
+ */
+html:not(.dark) .text-\[\#34D399\] { color: #059669; }
+html:not(.dark) .text-\[\#F87171\] { color: #dc2626; }
+html:not(.dark) .text-\[\#FBBF24\] { color: #b45309; }
+html:not(.dark) .text-\[\#22D3EE\] { color: #0891b2; }
+html:not(.dark) .text-\[\#FB923C\] { color: #ea580c; }
+html:not(.dark) .text-\[\#A78BFA\] { color: #7c3aed; }
+html:not(.dark) .text-\[\#F472B6\] { color: #db2777; }
+html:not(.dark) .text-\[\#38BDF8\] { color: #0284c7; }
+html:not(.dark) .text-\[\#FDBA74\] { color: #c2410c; }
+html:not(.dark) .text-\[\#94A3B8\] { color: #64748b; }
+/* نصوص شبه شفافة (رقاقة «ملغى» وشارة «تحت الحد الأدنى» وزر إجراء المستودع) */
+html:not(.dark) .text-\[\#F87171\]\/80 { color: rgb(220 38 38 / 0.8); }
+html:not(.dark) .text-\[\#FBBF24\]\/80 { color: rgb(180 83 9 / 0.8); }
+html:not(.dark) .text-\[\#FBBF24\]\/90 { color: rgb(180 83 9 / 0.9); }
+/* نجمة «المستودع الافتراضي» (fill وليس text) */
+html:not(.dark) .fill-\[\#FBBF24\] { fill: #b45309; }
+/* الإطار الخارجي للتطبيق (ما حول عمود 430px على الشاشات الكبيرة) */
+html:not(.dark) .bg-\[\#080E1A\] { background-color: #e2e8f0; }
+/* حلقة زر البيع البارز في شريط التبويبات — تطابق خلفية الشاشة الفاتحة
+   كما كانت تطابق DS-01 في الداكن (يُعاد احتساب box-shadow تلقائياً) */
+html:not(.dark) .ring-\[\#0F172A\] { --tw-ring-color: #f8fafc; }
+/* ظلال سوداء ثقيلة → ظلال خافتة مناسبة للخلفية الفاتحة (عبر متغير --tw-shadow
+   فلا تُفقد حلقات/ظلال أخرى مركبة على العنصر نفسه) */
+html:not(.dark) .shadow-\[0_0_60px_rgba\(0\,0\,0\,0\.6\)\] {
+  --tw-shadow: 0 0 60px rgba(15, 23, 42, 0.16);
+}
+html:not(.dark) .shadow-\[0_2px_12px_rgba\(0\,0\,0\,0\.25\)\] {
+  --tw-shadow: 0 2px 12px rgba(15, 23, 42, 0.1);
+}
+/* دلالة المبالغ المحاسبية (الأصل داخل @layer utilities — البديل غير الطبقي يفوز) */
+html:not(.dark) .amount-pos { color: #059669; }
+html:not(.dark) .amount-neg { color: #dc2626; }
+html:not(.dark) .amount-due { color: #b45309; }
+/* شريط التمرير النحيف بلون فاتح */
+html:not(.dark) .scrollbar-slim { scrollbar-color: #cbd5e1 transparent; }
+html:not(.dark) .scrollbar-slim::-webkit-scrollbar-thumb { background: #cbd5e1; }
+html:not(.dark) .scrollbar-slim::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+

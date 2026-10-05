@@ -39,10 +39,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ar" dir="rtl" className="dark" suppressHydrationWarning>
+    <html lang="ar" dir="rtl" suppressHydrationWarning>
       <body
         className={`${tajawal.variable} ${plexArabic.variable} antialiased bg-background text-foreground`}
       >
+        {/*
+          ثيم ما قبل الرسم (DS-11): يقرأ الثيم المحفوظ (zustand persist باسم "app.display")
+          ويضيف صنّ .dark على <html> قبل أول رسم — فلا وميض لمستخدمي الداكن (الافتراضي)،
+          والفاتح المحفوظ يبقى فاتحاً من اللحظة الأولى. AppShell يزامن الصن عند التبديل.
+          suppressHydrationWarning أعلاه يمتص اختلاف الصن بين الخادم والعميل.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              '(function(){try{var t=JSON.parse(localStorage.getItem("app.display")||"{}").state.theme;if(t!=="light")document.documentElement.classList.add("dark")}catch(e){document.documentElement.classList.add("dark")}})();',
+          }}
+        />
         {children}
         {/* تنبيهات موحدة أعلى الوسط RTL */}
         <Toaster

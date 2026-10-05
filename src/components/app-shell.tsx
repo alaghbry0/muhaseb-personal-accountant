@@ -54,6 +54,9 @@ export function AppShell() {
   const fontSize = useDisplaySettings((s) => s.fontSize);
   // شكل الأرقام (FR-13-05) — غربية/هندية على كل مبالغ التطبيق عبر setDigitsShape
   const numbers = useDisplaySettings((s) => s.numbers);
+  // الثيم (DS-11) — داكن افتراضي / فاتح: ضبط صنّ .dark على <html>؛ متغيرات CSS
+  // تتتالي فوراً على كل الشاشات بلا أي إعادة تركيب (لا يُضاف لمفتاح remount الأرقام).
+  const theme = useDisplaySettings((s) => s.theme);
   // حارس الترطيب (hydration): قبل اكتماله يُعرض الشكل الغربي المتطابق مع HTML الخادم
   // (المخزن المحلي يُصلح قيمته قبل الترطيب فبدونه يحدث mismatch) ثم يُطبّق المحفوظ.
   const mounted = useHydrated();
@@ -69,6 +72,11 @@ export function AppShell() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 });
   }, [seq, activeTab]);
+
+  // مزامنة صنّ .dark مع الثيم المختار (المخزن المحلي) — فوري على كل التطبيق
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme !== "light");
+  }, [theme]);
 
   // اختصار لوحة المفاتيح (7-a): Ctrl+K / ⌘K يفتح «البحث الشامل» من أي شاشة،
   // وزر «/» كذلك لكن فقط عندما لا يكون التركيز داخل حقل إدخال (حتى لا يُخطف الكتابة).

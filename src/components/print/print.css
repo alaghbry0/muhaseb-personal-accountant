@@ -240,3 +240,74 @@ table.a4-items .num {
   color: #444;
   line-height: 1.8;
 }
+
+/* ─── ورقة ملصقات الباركود A4 — شبكة 3×8 (Task 8-b) ─── */
+.label-sheet {
+  width: 100%;
+}
+.label-page {
+  display: grid;
+  grid-template-columns: repeat(3, 63mm);
+  grid-auto-rows: 25mm;
+  gap: 2mm;
+  justify-content: center;
+  page-break-after: always;
+  break-after: page;
+}
+.label-page.last {
+  page-break-after: auto;
+  break-after: auto;
+}
+.label-cell {
+  width: 63mm;
+  height: 25mm;
+  border: 1px dashed #999; /* حد قص متقطع للرف */
+  padding: 0.7mm 1.2mm;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  text-align: center;
+  overflow: hidden;
+  break-inside: avoid;
+}
+.label-company {
+  font-size: 6pt;
+  color: #333;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.1;
+}
+.label-name {
+  font-size: 8pt;
+  font-weight: 800;
+  line-height: 1.2;
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.label-bar {
+  width: 100%;
+}
+.label-bar svg {
+  display: block;
+  width: 100%;
+  height: 7mm;
+}
+.label-digits {
+  font-family: "IBM Plex Sans Arabic", var(--font-plex-arabic, monospace), monospace;
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: 0.5pt;
+  direction: ltr;
+  line-height: 1;
+}
+.label-price {
+  font-size: 9pt;
+  font-weight: 800;
+  line-height: 1;
+}

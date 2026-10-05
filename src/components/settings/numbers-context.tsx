@@ -10,6 +10,9 @@
  * - useFormatD()/formatAmountD() أبقيا للتوافق الرجوعي — سلوكهما الآن يطابق
  *   formatAmount مباشرة (لأن الشكل مفعل على مستوى الوحدة).
  * - حجم الخط (عادي/كبير): يقرؤه AppShell ويطبّق تكبيراً على إطار التطبيق كله.
+ * - الثيم (FR-13-05 / DS-11): داكن افتراضي أو فاتح — يقرؤه AppShell فيضبط صنّ .dark
+ *   على <html> (متغيرات CSS تتتالي فوراً بلا إعادة تركيب)، وscript مضمّن في layout.tsx
+ *   يطبّقه قبل أول رسم (لا وميض). إضافة حقل جديد لمفتاح التخزين نفسه متوافقة رجعياً.
  */
 import { useMemo } from "react";
 import { create } from "zustand";
@@ -18,12 +21,15 @@ import { formatAmount, toArabicDigits, type FormatAmountOptions } from "@/lib/fo
 
 export type NumbersShape = "western" | "arabic";
 export type FontSize = "normal" | "large";
+export type ThemeMode = "dark" | "light";
 
 interface DisplaySettingsState {
   numbers: NumbersShape;
   fontSize: FontSize;
+  theme: ThemeMode;
   setNumbers: (n: NumbersShape) => void;
   setFontSize: (f: FontSize) => void;
+  setTheme: (t: ThemeMode) => void;
 }
 
 export const useDisplaySettings = create<DisplaySettingsState>()(
@@ -31,8 +37,10 @@ export const useDisplaySettings = create<DisplaySettingsState>()(
     (set) => ({
       numbers: "western",
       fontSize: "normal",
+      theme: "dark",
       setNumbers: (numbers) => set({ numbers }),
       setFontSize: (fontSize) => set({ fontSize }),
+      setTheme: (theme) => set({ theme }),
     }),
     { name: "app.display" }
   )

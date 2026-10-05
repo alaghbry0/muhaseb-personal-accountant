@@ -2,7 +2,8 @@
 
 /**
  * إعدادات العرض (FR-13-05): شكل الأرقام (غربية/هندية) + حجم الخط (عادي/كبير —
- * يُطبَّق فوراً على إطار التطبيق كله عبر zoom) + الثيم (داكن افتراضي، فاتح «قريباً»).
+ * يُطبَّق فوراً على إطار التطبيق كله عبر zoom) + الثيم (داكن افتراضي / فاتح DS-11 —
+ * متغيرات CSS تتتالي فوراً على كل الشاشات، والمزامنة مع <html> في AppShell).
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Sun, Moon } from "lucide-react";
@@ -15,6 +16,7 @@ import {
   useFormatD,
   type NumbersShape,
   type FontSize,
+  type ThemeMode,
 } from "@/components/settings/numbers-context";
 import { cn } from "@/lib/utils";
 import type { BootstrapData } from "@/lib/types";
@@ -24,10 +26,15 @@ const NUMBERS_OPTIONS: Array<{ id: NumbersShape; title: string; sample: string; 
   { id: "arabic", title: "هندية", sample: "٠١٢٣٤٥٦٧٨٩", desc: "الأرقام العربية الشرقية" },
 ];
 
+const THEME_OPTIONS: Array<{ id: ThemeMode; title: string; desc: string; icon: typeof Sun }> = [
+  { id: "dark", title: "داكن", desc: "الافتراضي — كحلي/سماوي", icon: Moon },
+  { id: "light", title: "فاتح", desc: "ديناميكي حسب الإضاءة — تجربة قراءة نهارية", icon: Sun },
+];
+
 export default function SettingsDisplayScreen() {
   const qc = useQueryClient();
   const fmt = useFormatD();
-  const { numbers, fontSize, setNumbers, setFontSize } = useDisplaySettings();
+  const { numbers, fontSize, theme, setNumbers, setFontSize, setTheme } = useDisplaySettings();
 
   const { data: boot } = useQuery<BootstrapData>({
     queryKey: ["bootstrap"],
@@ -55,6 +62,17 @@ export default function SettingsDisplayScreen() {
       await patchJson("/api/settings", { key: "app.fontSize", value: size });
       qc.invalidateQueries({ queryKey: ["bootstrap"] });
       toast.success(size === "large" ? "تم تكبير خط التطبيق" : "أُعيد الخط إلى الحجم العادي");
+    } catch {
+      /* توست من api.ts */
+    }
+  }
+
+  async function persistTheme(mode: ThemeMode) {
+    setTheme(mode);
+    try {
+      await patchJson("/api/settings", { key: "app.theme", value: mode });
+      qc.invalidateQueries({ queryKey: ["bootstrap"] });
+      toast.success(mode === "light" ? "تم تفعيل الثيم الفاتح" : "تم تفعيل الثيم الداكن");
     } catch {
       /* توست من api.ts */
     }
@@ -139,33 +157,45 @@ export default function SettingsDisplayScreen() {
 
         <SettingsSection title="الثيم">
           <div className="flex gap-2.5">
-            <div className="flex flex-1 items-center gap-3 rounded-2xl border border-primary bg-primary/10 p-3">
-              <span className="flex size-10 items-center justify-center rounded-xl bg-[#0F172A] text-primary">
-                <Moon className="size-5" aria-hidden />
-              </span>
-              <div className="flex flex-col">
-                <span className="text-[14.5px] font-bold text-foreground">داكن</span>
-                <span className="text-[11.5px] text-muted-foreground">الافتراضي — كحلي/سماوي</span>
-              </div>
-              <span className="ms-auto flex size-5 items-center justify-center rounded-full bg-primary text-[#06202B]">
-                <Check className="size-3.5" aria-hidden />
-              </span>
-            </div>
-            <div className="flex flex-1 items-center gap-3 rounded-2xl border border-border/60 bg-card p-3 opacity-60" aria-disabled>
-              <span className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-                <Sun className="size-5" aria-hidden />
-              </span>
-              <div className="flex flex-col">
-                <span className="flex items-center gap-1.5 text-[14.5px] font-bold text-foreground">
-                  فاتح
-                  <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
-                    قريباً
+            {THEME_OPTIONS.map((o) => {
+              const active = theme === o.id;
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => persistTheme(o.id)}
+                  aria-pressed={active}
+                  className={cn(
+                    "flex flex-1 items-center gap-3 rounded-2xl border p-3 text-right transition-all active:scale-[0.98]",
+                    active
+                      ? "border-primary bg-primary/10"
+                      : "border-border/60 bg-card hover:border-primary/40"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex size-10 shrink-0 items-center justify-center rounded-xl",
+                      o.id === "dark" ? "bg-muted text-primary" : "bg-[#FBBF24]/20 text-[#FBBF24]"
+                    )}
+                  >
+                    <o.icon className="size-5" aria-hidden />
                   </span>
-                </span>
-                <span className="text-[11.5px] text-muted-foreground">غير متاح في هذا الإصدار</span>
-              </div>
-            </div>
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="text-[14.5px] font-bold text-foreground">{o.title}</span>
+                    <span className="text-[11px] leading-4 text-muted-foreground">{o.desc}</span>
+                  </span>
+                  {active ? (
+                    <span className="ms-auto flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[#06202B]">
+                      <Check className="size-3.5" aria-hidden />
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
+          <p className="text-[11.5px] leading-5 text-muted-foreground">
+            يتبدّل مظهر التطبيق كله فوراً ويُحفظ محلياً — يعود للداكن تلقائياً مع إعادة الضبط الافتراضي.
+          </p>
         </SettingsSection>
 
         <AppCard noPad className="p-3">
@@ -179,6 +209,7 @@ export default function SettingsDisplayScreen() {
           onClick={() => {
             persistNumbers("western");
             persistFontSize("normal");
+            persistTheme("dark");
           }}
         >
           إعادة الضبط الافتراضي (غربية / عادي / داكن)
