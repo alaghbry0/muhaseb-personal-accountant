@@ -52,7 +52,7 @@ interface RepDto {
 }
 
 export default function SalesPosScreen({ mode: modeParam }: { mode?: string }) {
-  const { pop, canPop } = useNav();
+  const { pop, canPop, push } = useNav();
   const qc = useQueryClient();
   const pos = usePosStore();
 
@@ -425,6 +425,17 @@ export default function SalesPosScreen({ mode: modeParam }: { mode?: string }) {
           <h1 className="flex-1 truncate text-center text-[17px] font-bold text-foreground">
             {mode === "quotation" ? "عرض سعر جديد" : "فواتير المبيعات"}
           </h1>
+          {mode === "invoice" && !showBack && (
+            <button
+              type="button"
+              onClick={() => push("sales-invoices")}
+              aria-label="سجل الفواتير"
+              title="سجل الفواتير"
+              className="flex size-11 items-center justify-center rounded-xl text-foreground hover:bg-accent/40 active:scale-95"
+            >
+              <ReceiptText className="size-5" aria-hidden />
+            </button>
+          )}
           {mode === "invoice" ? (
             <input
               type="text"
@@ -727,33 +738,35 @@ export default function SalesPosScreen({ mode: modeParam }: { mode?: string }) {
       {/* ═══════════ اللوحة السفلية ═══════════ */}
       <div className="sticky bottom-0 z-30 mt-auto border-t border-border/70 bg-card/95 pb-safe pt-2 backdrop-blur-md">
         <div className="px-4">
-          <div className="flex items-end justify-between gap-2">
-            <div className="flex flex-col gap-0.5">
-              {(pos.invoiceDiscount > 0 || totals.taxAmount > 0 || totals.subtotal !== totals.total) && (
+          <div className="rounded-2xl border border-primary/20 bg-linear-to-l from-primary/10 via-transparent to-transparent p-3">
+            <div className="flex items-end justify-between gap-2">
+              <div className="flex flex-col gap-0.5">
+                {(pos.invoiceDiscount > 0 || totals.taxAmount > 0 || totals.subtotal !== totals.total) && (
+                  <span className="font-num text-[12px] text-muted-foreground">
+                    المجموع {formatAmount(totals.subtotal, { currency: currencyCode })}
+                    {pos.invoiceDiscount > 0 && (
+                      <span className="text-[#F87171]">
+                        {" "}− خصم {formatAmount(pos.invoiceDiscount, { currency: currencyCode })}
+                      </span>
+                    )}
+                    {totals.taxAmount > 0 && (
+                      <span className="text-[#FBBF24]">
+                        {" "}| ضريبة {formatAmount(totals.taxAmount, { currency: currencyCode })}
+                      </span>
+                    )}
+                  </span>
+                )}
+                <span className="text-[13px] font-bold text-muted-foreground">الإجمالي</span>
+                <span className="font-num text-[30px] font-extrabold leading-none text-primary" dir="ltr">
+                  {formatAmount(totals.total, { currency: currencyCode })}
+                </span>
+              </div>
+              {pos.lines.length > 0 && (
                 <span className="font-num text-[12px] text-muted-foreground">
-                  المجموع {formatAmount(totals.subtotal, { currency: currencyCode })}
-                  {pos.invoiceDiscount > 0 && (
-                    <span className="text-[#F87171]">
-                      {" "}− خصم {formatAmount(pos.invoiceDiscount, { currency: currencyCode })}
-                    </span>
-                  )}
-                  {totals.taxAmount > 0 && (
-                    <span className="text-[#FBBF24]">
-                      {" "}| ضريبة {formatAmount(totals.taxAmount, { currency: currencyCode })}
-                    </span>
-                  )}
+                  {pos.lines.length} {pos.lines.length === 1 ? "صنف" : "أصناف"}
                 </span>
               )}
-              <span className="text-[13px] font-bold text-muted-foreground">الإجمالي</span>
-              <span className="font-num text-[30px] font-extrabold leading-none text-primary" dir="ltr">
-                {formatAmount(totals.total, { currency: currencyCode })}
-              </span>
             </div>
-            {pos.lines.length > 0 && (
-              <span className="font-num text-[12px] text-muted-foreground">
-                {pos.lines.length} {pos.lines.length === 1 ? "صنف" : "أصناف"}
-              </span>
-            )}
           </div>
 
           {/* رقائق الإعداد السريع */}

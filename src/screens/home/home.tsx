@@ -9,7 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   Store, Receipt, Boxes, TrendingUp, Truck, Users, BriefcaseBusiness,
-  Calculator, Wallet, DatabaseBackup, Settings, BarChart3,
+  Calculator, Wallet, DatabaseBackup, Settings, BarChart3, Banknote, Search,
   Bluetooth, X, Printer, ChevronDown, ChevronUp, CalendarDays,
   AlertCircle, BellRing, PackageX,
 } from "lucide-react";
@@ -20,7 +20,7 @@ import { getJson } from "@/lib/api";
 import { formatDateLong, formatAmount } from "@/lib/format";
 import { useNav } from "@/lib/nav";
 import type { BootstrapData, DashboardData } from "@/lib/types";
-import { AppCard, StatTile, SectionTitle, ListRow, PrimaryButton } from "@/components/ds";
+import { AppCard, AmountText, StatTile, SectionTitle, ListRow, PrimaryButton } from "@/components/ds";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -65,6 +65,7 @@ export default function HomeScreen() {
     ...d,
     label: d.date.slice(5), // MM-DD
   }))
+  const last30Total = chartData.reduce((s, d) => s + (d.total ?? 0), 0)
 
   return (
     <div className="flex flex-col gap-4 p-4 pb-6">
@@ -73,6 +74,15 @@ export default function HomeScreen() {
         <div className="pointer-events-none absolute -left-8 -top-10 size-36 rounded-full bg-white/10" aria-hidden />
         <div className="pointer-events-none absolute -bottom-14 left-16 size-28 rounded-full bg-white/10" aria-hidden />
         <div className="relative flex items-start justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => push("global-search")}
+            aria-label="البحث الشامل"
+            title="البحث الشامل"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-[#06202B] transition-colors hover:bg-white/30 active:scale-95"
+          >
+            <Search className="size-4.5" aria-hidden />
+          </button>
           <div className="flex flex-col gap-1">
             <span className="text-[19px] font-extrabold leading-tight">
               {company?.name ?? "متجر الأمانة للتجارة"}
@@ -95,6 +105,7 @@ export default function HomeScreen() {
           amount={dash?.todaySales ?? 0}
           currency="YER"
           trendPercent={dash?.salesTrendPercent ?? null}
+          icon={TrendingUp}
           loading={isLoading}
           onClick={() => push("sales-invoices")}
         />
@@ -103,6 +114,7 @@ export default function HomeScreen() {
           amount={dash?.todayProfit ?? 0}
           currency="YER"
           variant="pos"
+          icon={Banknote}
           hint={isLoading ? undefined : "إجمالي يوم النقدية"}
           loading={isLoading}
           onClick={() => push("report-pl")}
@@ -111,6 +123,7 @@ export default function HomeScreen() {
           title="فواتير اليوم"
           amount={dash?.todayInvoiceCount ?? 0}
           plain
+          icon={Receipt}
           hint={isLoading ? undefined : "فاتورة مبيعات"}
           loading={isLoading}
           onClick={() => push("sales-invoices")}
@@ -119,6 +132,7 @@ export default function HomeScreen() {
           title="صافي الصندوق"
           amount={dash?.cashNet ?? 0}
           currency="YER"
+          icon={Wallet}
           hint={isLoading ? undefined : "حركة اليوم: قبض − صرف"}
           loading={isLoading}
           onClick={() => push("cash-boxes")}
@@ -140,6 +154,17 @@ export default function HomeScreen() {
         حركة الشركة — آخر 30 يوماً
       </SectionTitle>
       <AppCard className="pt-2">
+        {/* رأس الرسم: إجمالي 30 يوماً + مفتاح الوضع */}
+        <div className="flex items-center justify-between gap-2 px-3 pb-1.5">
+          <span className="flex items-baseline gap-1.5">
+            <span className="text-[12.5px] font-medium text-muted-foreground">الإجمالي 30 يوماً:</span>
+            <AmountText value={last30Total} currency="YER" size="md" variant="neutral" />
+          </span>
+          <span className="flex shrink-0 items-center gap-1.5 text-[11.5px] text-muted-foreground">
+            <span className="size-2 rounded-full bg-primary" aria-hidden />
+            المبيعات اليومية
+          </span>
+        </div>
         <div className="h-32 w-full" dir="ltr">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={chartData} margin={{ top: 6, right: 6, bottom: 0, left: 6 }}>
@@ -193,14 +218,19 @@ export default function HomeScreen() {
             key={m.label}
             type="button"
             onClick={() => push(m.screen)}
-            className="flex aspect-square flex-col items-center justify-center gap-2 rounded-2xl border border-border/60 bg-card p-2 text-center shadow-[0_2px_12px_rgba(0,0,0,0.25)] transition-transform hover:border-primary/40 active:scale-95"
+            className="flex aspect-square flex-col items-center justify-center gap-2 rounded-2xl border border-border/60 bg-card p-2 text-center shadow-[0_2px_12px_rgba(0,0,0,0.25)] transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-[0_4px_20px_rgba(34,211,238,0.15)] active:scale-95"
           >
-            <m.icon
-              className="size-8"
-              style={{ color: m.color }}
-              aria-hidden
-              strokeWidth={1.8}
-            />
+            <span
+              className="flex size-12 items-center justify-center rounded-2xl"
+              style={{ backgroundColor: `${m.color}1A` }}
+            >
+              <m.icon
+                className="size-6"
+                style={{ color: m.color }}
+                aria-hidden
+                strokeWidth={1.8}
+              />
+            </span>
             <span className="text-[12px] font-medium leading-snug text-foreground">
               {m.label}
             </span>
@@ -272,7 +302,7 @@ function PrinterPanel() {
   const [width, setWidth] = useState("80");
   const [dpi, setDpi] = useState("58");
   const [connected, setConnected] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
 
   return (
     <AppCard noPad className="overflow-hidden">

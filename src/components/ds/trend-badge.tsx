@@ -3,6 +3,7 @@
 /**
  * شارة اتجاه التغيّر — سهم + نسبة. أعلى = أخضر افتراضياً (مبيعات)،
  * `goodWhenDown` يقلب الدلالة (المصروفات).
+ * نسب مبالغ فيها (يوم سابق شبه صفري) تُقيَّد عند 999%+ / -999%+.
  */
 import { cn } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
@@ -20,6 +21,9 @@ export function TrendBadge({ percent, goodWhenDown = false, className }: TrendBa
   const isDown = rounded < -0.05;
   const good = goodWhenDown ? !isUp && isDown : isUp;
   const Icon = isUp ? TrendingUp : isDown ? TrendingDown : Minus;
+  // قيد النسب السخيفة (مثل +1026% عند مبيعات أمس شبه معدومة): سقف 999%
+  const clamped = Math.max(-999, Math.min(999, rounded));
+  const capped = clamped !== rounded;
   return (
     <span
       dir="ltr"
@@ -34,8 +38,9 @@ export function TrendBadge({ percent, goodWhenDown = false, className }: TrendBa
       )}
     >
       <Icon className="size-3" aria-hidden />
-      {rounded > 0 ? "+" : ""}
-      {rounded}%
+      {clamped > 0 ? "+" : ""}
+      {clamped}
+      {capped ? "+" : ""}%
     </span>
   );
 }

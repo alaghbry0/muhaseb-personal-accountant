@@ -92,10 +92,13 @@ export default function SettingsDisplayScreen() {
               </button>
             ))}
           </div>
-          <div className="rounded-xl bg-muted/50 p-3">
-            <p className="text-[12px] text-muted-foreground">معاينة: مبلغ فاتورة {fmt(1234567, { currency: boot?.baseCurrency?.code ?? "YER" })}</p>
-            <p className="mt-1 text-[11.5px] leading-5 text-muted-foreground">
-              يُطبَّق على شاشات الإعدادات والبيانات المرجعية فوراً — تعميمه على بقية الشاشات موثق في خطة التطوير.
+          <div className="flex flex-col gap-2 rounded-xl border border-border/50 bg-muted/50 p-3">
+            <p className="text-[12px] text-muted-foreground">معاينة: مبلغ فاتورة</p>
+            <p dir="auto" className="font-num text-[15px] font-bold text-foreground">
+              {fmt(1234567, { currency: boot?.baseCurrency?.code ?? "YER" })}
+            </p>
+            <p className="text-[11.5px] leading-5 text-muted-foreground">
+              يُطبَّق فوراً على مبالغ وكميات كل شاشات التطبيق (التواريخ تبقى بالشكل القياسي).
             </p>
           </div>
         </SettingsSection>

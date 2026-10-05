@@ -1,5 +1,10 @@
 /**
- * تنسيق موحد للمبالغ والتواريخ والفترات — أرقام غربية 0-9 (SRS §5.4 قاعدة 5)
+ * تنسيق موحد للمبالغ والتواريخ والفترات (SRS §5.4 قاعدة 5).
+ * شكل الأرقام (FR-13-05): متغير module-level «digitsShape» يتحكم في مخرجات formatAmount —
+ * يضبطه AppShell من مخزن إعدادات العرض (western 0-9 / arabic ٠-٩) قبل كل رسم،
+ * فتتبعه كل المبالغ والكميات في التطبيق (266+ استدعاء) دون تعديل الشاشات.
+ * التواريخ (formatDate/formatDateTime/formatTime12) تبقى غربية عمداً — مخارجها تُستخدم
+ * في حمولات API وحقول date فأي تحويل لها يُفسد البيانات.
  */
 
 export type CurrencyCode = "YER" | "SAR" | "USD" | "AED"
@@ -53,6 +58,26 @@ export function toArabicDigits(s: string): string {
   return s.replace(/[0-9]/g, (d) => AR_DIGITS[Number(d)])
 }
 
+// ═══ شكل الأرقام المعروض (FR-13-05) ═══
+// متغير module-level مستقل عن مخزن zustand (لا استيراد متبادل ولا مشاكل SSR) —
+// AppShell يضبطه قبل كل رسم ويُعيد تركيب الشجرة عند التبديل (key remount).
+let digitsShape: "western" | "arabic" = "western";
+
+/** ضبط شكل أرقام formatAmount على مستوى التطبيق (يستدعى من AppShell) */
+export function setDigitsShape(s: "western" | "arabic") {
+  digitsShape = s;
+}
+
+/** شكل الأرقام الحالي (للعرض/التشخيص) */
+export function getDigitsShape(): "western" | "arabic" {
+  return digitsShape;
+}
+
+/** تحويل نص أرقام حسب الشكل المفعّل (غربية كما هي / هندية ٠-٩) */
+function shaped(s: string): string {
+  return digitsShape === "arabic" ? toArabicDigits(s) : s;
+}
+
 /** تقريب مدمج: يزيل الأصفار الذيلية الزائدة (12.50 → 12.5) */
 export function num(n: number | null | undefined, decimals = 2): number {
   if (n == null || !isFinite(n)) return 0
@@ -72,8 +97,9 @@ export interface FormatAmountOptions {
 }
 
 /**
- * تنسيق مبلغ بفواصل آلاف + رمز العملة.
- * formatAmount(12500) → "12,500" | مع currency: "YER" → "12,500 ر.ي"
+ * تنسيق مبلغ بفواصل آلاف + رمز العملة، بفواصل الأرقام حسب شكل العرض المفعّل.
+ * formatAmount(12500) → "12,500" (أو "١٢,٥٠٠" بالشكل الهندي) |
+ * مع currency: "YER" → "12,500 ر.ي"
  */
 export function formatAmount(
   n: number | null | undefined,
@@ -94,7 +120,7 @@ export function formatAmount(
   if (showSymbol && currency && CURRENCY_SYMBOLS[currency]) {
     out += ` ${CURRENCY_SYMBOLS[currency]}`
   }
-  return out
+  return shaped(out)
 }
 
 /** YYYY-MM-DD من كائن تاريخ أو نص */

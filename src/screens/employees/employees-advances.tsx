@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { HandCoins, Plus } from "lucide-react";
 import { getJson } from "@/lib/api";
 import { useNav } from "@/lib/nav";
+import { formatAmount } from "@/lib/format";
 import {
   AppHeader, AppCard, AmountText, EmptyState, StatusChip,
 } from "@/components/ds";
@@ -103,7 +104,7 @@ export default function EmployeesAdvancesScreen() {
                 {b.name}
                 {b.unpaidBase > 0.005 && (
                   <span className="font-num rounded-full bg-[#FBBF24]/15 px-1.5 text-[11px] text-[#FBBF24]">
-                    {b.unpaidBase.toLocaleString("en-US")}
+                    {formatAmount(b.unpaidBase, { currency: "YER", showSymbol: false })}
                   </span>
                 )}
               </button>
@@ -153,7 +154,7 @@ export default function EmployeesAdvancesScreen() {
                   />
                   {a.currencyCode !== "YER" && (
                     <span className="font-num text-[11px] text-muted-foreground">
-                      ≈ {a.amountBase.toLocaleString("en-US")} ر.ي
+                      ≈ {formatAmount(a.amountBase, { currency: "YER", showSymbol: false })} ر.ي
                     </span>
                   )}
                 </span>

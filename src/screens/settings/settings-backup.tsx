@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { getJson, postJson } from "@/lib/api";
-import { formatDateTime } from "@/lib/format";
+import { formatAmount, formatDateTime } from "@/lib/format";
 import { AppHeader, AppCard, PrimaryButton, EmptyState, StatusChip } from "@/components/ds";
 import { PosSheet } from "@/components/pos/pos-sheet";
 import { cn } from "@/lib/utils";
@@ -328,7 +328,7 @@ export default function SettingsBackupScreen() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">إجمالي السجلات</span>
-                <span className="font-num font-medium text-foreground">{totalRecords.toLocaleString("en-US")}</span>
+                <span className="font-num font-medium text-foreground">{formatAmount(totalRecords, { decimals: 0, showSymbol: false })}</span>
               </div>
               <div className="flex justify-between gap-4">
                 <span className="shrink-0 text-muted-foreground">أبرز المحتويات</span>

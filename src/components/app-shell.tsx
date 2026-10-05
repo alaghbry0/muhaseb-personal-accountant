@@ -5,13 +5,14 @@
  * منطقة محتوى قابلة للتمرير + تنقل شاشات مكدسة بحركة fade+slide (180ms) واعية للاتجاه
  * + شريط تبويبات سفلي بزر بيع بارز في الوسط.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, ShoppingCart, Package, BarChart3, LayoutGrid,
 } from "lucide-react";
 import { useNav, type TabId } from "@/lib/nav";
 import { useDisplaySettings } from "@/components/settings/numbers-context";
+import { setDigitsShape } from "@/lib/format";
 import { registry } from "@/screens/registry";
 import { cn } from "@/lib/utils";
 import { StubScreen } from "@/components/ds";
@@ -24,10 +25,31 @@ const TABS: Array<{ id: TabId; label: string; icon: typeof LayoutDashboard }> = 
   { id: "more", label: "المزيد", icon: LayoutGrid },
 ];
 
+const emptySubscribe = () => () => {};
+
+/** true بعد اكتمال الترطيب (hydration): أول رسم يطابق snapshot الخادم (false) ثم يعاد الرسم بقيمة العميل */
+function useHydrated(): boolean {
+  return useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
+}
+
 export function AppShell() {
   const { activeTab, stacks, direction, seq, setTab } = useNav();
   // حجم الخط (عادي/كبير) — إعدادات العرض، تُطبّق على إطار التطبيق كله (Task 5)
   const fontSize = useDisplaySettings((s) => s.fontSize);
+  // شكل الأرقام (FR-13-05) — غربية/هندية على كل مبالغ التطبيق عبر setDigitsShape
+  const numbers = useDisplaySettings((s) => s.numbers);
+  // حارس الترطيب (hydration): قبل اكتماله يُعرض الشكل الغربي المتطابق مع HTML الخادم
+  // (المخزن المحلي يُصلح قيمته قبل الترطيب فبدونه يحدث mismatch) ثم يُطبّق المحفوظ.
+  const mounted = useHydrated();
+  const effective = mounted ? numbers : "western";
+  // ضبط الشكل قبل أي رسم (مجرد إسناد متغير وحدة — آمن أثناء الرسم)؛
+  // ومفتاح effective على الجذر يعيد تركيب الشجرة كاملة عند التبديل فتُعاد كل المبالغ.
+  setDigitsShape(effective);
+
   const current = stacks[activeTab].at(-1) ?? { screen: activeTab };
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -66,6 +88,7 @@ export function AppShell() {
   return (
     <div className="flex min-h-dvh justify-center bg-[#080E1A]">
       <div
+        key={effective}
         className="relative flex min-h-dvh w-full max-w-[430px] flex-col border-border/40 bg-background shadow-[0_0_60px_rgba(0,0,0,0.6)] md:border-x"
         style={fontSize === "large" ? { zoom: 1.08 } : undefined}
       >

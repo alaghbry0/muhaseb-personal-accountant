@@ -50,11 +50,15 @@ export function StatTile({
       onClick={onClick}
       disabled={!onClick}
       className={cn(
-        "flex w-full flex-col items-start gap-1.5 rounded-2xl bg-card border border-border/60 p-4 text-start shadow-[0_2px_12px_rgba(0,0,0,0.25)] transition-colors",
-        onClick && "active:bg-accent/40 cursor-pointer",
+        "flex w-full flex-col items-start gap-1.5 rounded-2xl bg-card border border-border/60 p-4 text-start shadow-[0_2px_12px_rgba(0,0,0,0.25)] transition-all",
+        onClick && "cursor-pointer hover:border-primary/30 active:scale-[0.98] active:bg-accent/40",
         className
       )}
     >
+      <span
+        className="h-0.5 w-8 shrink-0 rounded-full bg-linear-to-l from-primary/40 to-transparent"
+        aria-hidden
+      />
       <span className="flex w-full items-center justify-between gap-2">
         <span className="text-[13px] font-medium text-muted-foreground">{title}</span>
         {Icon && <Icon className="size-4 shrink-0 text-primary/70" aria-hidden />}
