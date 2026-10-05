@@ -9,11 +9,17 @@ import { formatAmount, formatDateTime } from "@/lib/format";
 import type { PrintCompanyInfo } from "@/components/print/voucher-types";
 import type { CloseShiftResult } from "@/domain/cash";
 
+/** نسخة الطباعة تقبل حقلي الافتتاح الاختياريين (تفاصيل الوردية المقفلة — Task 10-b) */
+type PrintableShiftResult = CloseShiftResult & {
+  openingCount?: number | null
+  notes?: string | null
+}
+
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-export function printShiftReport(res: CloseShiftResult, company: PrintCompanyInfo): void {
+export function printShiftReport(res: PrintableShiftResult, company: PrintCompanyInfo): void {
   try {
     document.getElementById("print-root")?.remove();
     const cur = res.currencyCode;
@@ -50,6 +56,7 @@ export function printShiftReport(res: CloseShiftResult, company: PrintCompanyInf
       <div class="rc-row"><span>الصندوق</span><span class="rc-val">${esc(res.cashboxName)}</span></div>
       <div class="rc-row"><span>الفتح</span><span class="rc-val" dir="ltr">${formatDateTime(res.openedAt)}</span></div>
       <div class="rc-row"><span>الإقفال</span><span class="rc-val" dir="ltr">${formatDateTime(res.closedAt)}</span></div>
+      ${res.openingCount != null ? `<div class="rc-row"><span>عدّ البداية</span><span class="rc-val" dir="ltr">${fmt(res.openingCount)}</span></div>` : ""}
       <div class="rc-dash"></div>
       ${lines.map(([k, v]) => `<div class="rc-row"><span>${k}</span><span class="rc-val" dir="ltr">${v}</span></div>`).join("")}
       <div class="rc-dash"></div>

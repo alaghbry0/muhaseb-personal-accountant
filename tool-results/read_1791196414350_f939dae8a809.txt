@@ -1,0 +1,1051 @@
+     1→/**
+     2→ * Domain — الخزينة والنقدية (Task 4-a) — FR-04 + FR-08.
+     3→ *
+     4→ * ═══════════════ اتفاقية اتجاه الحركات (موثقة للجميع) ═══════════════
+     5→ * الرصيد يُحسب بعملة الصندوق نفسه. لكل حركة cash_tx جانبان:
+     6→ *   • cashbox_id  = الصندوق «الرئيسي» للحركة.
+     7→ *   • to_cashbox_id = الطرف المقابل (للتحويل/البنكي فقط).
+     8→ * خريطة الإشارة (من منظور صندوق النقدية — متسقة مع /api/dashboard):
+     9→ *   قبض receipt / افتتاحي opening / سحب بنكي bank_withdraw  ← داخل (+)
+    10→ *     • سحب بنكي: النقد يدخل صندوق cashbox_id قادماً من البنك
+    11→ *       (to_cashbox_id = صندوق البنك إن وُجد فيُخصم منه).
+    12→ *   صرف payment / مصروف expense / سحبية employee_advance / عمولة
+    13→ *   commission_payout / إيداع بنكي bank_deposit / رواتب salary_batch ← خارج (−)
+    14→ *     • إيداع بنكي: النقد يخرج من صندوق cashbox_id إلى البنك
+    15→ *       (to_cashbox_id = صندوق البنك إن وُجد فيُضاف له).
+    16→ *   تحويل box_transfer: يخرج من cashbox_id (−) ويدخل to_cashbox_id (+).
+    17→ *   سندات 3-b (refType='voucher') والفواتير (refType='invoice') والأقساط
+    18→ *   (refType='installment') كلها txType receipt/payment — تدخل في الرصيد طبيعياً.
+    19→ * ملاحظة: تعليمة المهمة الأصلية اعتبرت إيداع/سحب بنكي من منظور «حساب البنك»
+    20→ * (إيداع=+)؛ اعتمدنا منظور صندوق النقدية للاتساق مع dashboard المُسلَّم
+    21→ * (IN= receipt+bank_withdraw / OUT= …+bank_deposit) ولصحة UX بلا صندوق بنك.
+    22→ * ═════════════════════════════════════════════════════════════════════
+    23→ */
+    24→import type { Prisma, PrismaClient } from "@prisma/client"
+    25→import { round2, round4, toBase } from "./money"
+    26→import { DomainError } from "./invoice-save"
+    27→import { todayStr } from "./parties"
+    28→
+    29→type Tx = Prisma.TransactionClient
+    30→type AnyDb = PrismaClient | Prisma.TransactionClient
+    31→
+    32→// ─── الأنواع والتسميات ───
+    33→
+    34→export type CashTxType =
+    35→  | "receipt"
+    36→  | "payment"
+    37→  | "expense"
+    38→  | "employee_advance"
+    39→  | "commission_payout"
+    40→  | "box_transfer"
+    41→  | "bank_deposit"
+    42→  | "bank_withdraw"
+    43→  | "salary_batch"
+    44→  | "opening"
+    45→
+    46→export const CASH_TX_TYPES: CashTxType[] = [
+    47→  "receipt",
+    48→  "payment",
+    49→  "expense",
+    50→  "employee_advance",
+    51→  "commission_payout",
+    52→  "box_transfer",
+    53→  "bank_deposit",
+    54→  "bank_withdraw",
+    55→  "salary_batch",
+    56→  "opening",
+    57→]
+    58→
+    59→export const TX_TYPE_LABELS: Record<CashTxType, string> = {
+    60→  receipt: "قبض",
+    61→  payment: "صرف",
+    62→  expense: "مصروف",
+    63→  employee_advance: "سحبية موظف",
+    64→  commission_payout: "صرف عمولة",
+    65→  box_transfer: "تحويل بين صندوقين",
+    66→  bank_deposit: "إيداع بنكي",
+    67→  bank_withdraw: "سحب بنكي",
+    68→  salary_batch: "مسير رواتب",
+    69→  opening: "رصيد افتتاحي",
+    70→}
+    71→
+    72→/** إشارة الحركة على جانب cashbox_id (داخل +1 / خارج −1 / محايد 0) */
+    73→const SIGN_CASHBOX: Record<CashTxType, number> = {
+    74→  receipt: 1,
+    75→  opening: 1,
+    76→  bank_withdraw: 1,
+    77→  payment: -1,
+    78→  expense: -1,
+    79→  employee_advance: -1,
+    80→  commission_payout: -1,
+    81→  bank_deposit: -1,
+    82→  salary_batch: -1,
+    83→  box_transfer: -1,
+    84→}
+    85→
+    86→/** إشارة الحركة على جانب to_cashbox_id (لا معنى له إلا للتحويل/البنكي) */
+    87→const SIGN_TO: Partial<Record<CashTxType, number>> = {
+    88→  box_transfer: 1,
+    89→  bank_deposit: 1, // البنك يستقبل الإيداع
+    90→  bank_withdraw: -1, // البنك يخرج منه المسحوب
+    91→}
+    92→
+    93→/** أنواع الحركات الخارجة من صندوق cashbox_id — تُفحص ضد السالب */
+    94→export function isOutflowOnCashbox(txType: string): boolean {
+    95→  return SIGN_CASHBOX[txType as CashTxType] === -1
+    96→}
+    97→
+    98→// ─── أسعار الصرف المساعدة ───
+    99→
+   100→/** أفضل سعر متاح لعملة عند تاريخ معين (ليومه، أو آخر سعر ≤ التاريخ، أو الأحدث مطلقاً) */
+   101→export async function rateAt(
+   102→  tx: Tx,
+   103→  currencyId: number,
+   104→  date: string
+   105→): Promise<number> {
+   106→  const currency = await tx.currency.findUnique({ where: { id: currencyId } })
+   107→  if (!currency) throw new DomainError("العملة غير موجودة")
+   108→  if (currency.isBase) return 1
+   109→  const rows = await tx.exchangeRate.findMany({
+   110→    where: { currencyId },
+   111→    orderBy: { rateDate: "desc" },
+   112→    select: { rateDate: true, rate: true },
+   113→  })
+   114→  if (rows.length === 0) return 1
+   115→  const exact = rows.find((r) => r.rateDate === date)
+   116→  if (exact) return exact.rate
+   117→  const before = rows.find((r) => r.rateDate < date)
+   118→  return before?.rate ?? rows[0].rate
+   119→}
+   120→
+   121→// ─── أرصدة الصناديق ───
+   122→
+   123→export interface CashboxBalanceRow {
+   124→  id: number
+   125→  name: string
+   126→  currencyId: number
+   127→  currencyCode: string
+   128→  isDefault: boolean
+   129→  /** الرصيد بعملة الصندوق */
+   130→  balance: number
+   131→  /** الرصيد محوّلاً للعملة الأساسية */
+   132→  balanceBase: number
+   133→  lastTxDate: string | null
+   134→  txCount: number
+   135→}
+   136→
+   137→/**
+   138→ * رصيد صندوق واحد بعملته — Σ(حركات بعملة الصندوق أو محوّلة إليها).
+   139→ * الحركات بعملة غير عملة الصندوق تُحوَّل: المبلغ×سعره → الأساس → ÷ سعر عملة الصندوق.
+   140→ * (الكتابة تمنع أصلاً عدم التطابق إلا في تحويل/بنكي بين صندوقين بعملتين مختلفتين.)
+   141→ */
+   142→export async function computeCashboxBalance(tx: Tx, cashboxId: number): Promise<number> {
+   143→  const box = await tx.cashbox.findUnique({
+   144→    where: { id: cashboxId },
+   145→    include: { currency: true },
+   146→  })
+   147→  if (!box) throw new DomainError("الصندوق غير موجود")
+   148→  const rows = await tx.cashTx.findMany({
+   149→    where: { OR: [{ cashboxId }, { toCashboxId: cashboxId }] },
+   150→    select: {
+   151→      txType: true,
+   152→      cashboxId: true,
+   153→      toCashboxId: true,
+   154→      currencyId: true,
+   155→      amount: true,
+   156→      exchangeRate: true,
+   157→      txDate: true,
+   158→    },
+   159→  })
+   160→  let balance = 0
+   161→  for (const r of rows) {
+   162→    const sign =
+   163→      r.cashboxId === cashboxId
+   164→        ? (SIGN_CASHBOX[r.txType as CashTxType] ?? 0)
+   165→        : r.toCashboxId === cashboxId
+   166→          ? (SIGN_TO[r.txType as CashTxType] ?? 0)
+   167→          : 0
+   168→    if (sign === 0) continue
+   169→    let amount = r.amount
+   170→    if (r.currencyId !== box.currencyId) {
+   171→      // حولة عملة الحركة → الأساس → عملة الصندوق
+   172→      const boxRate = await rateAt(tx, box.currencyId, r.txDate)
+   173→      if (boxRate <= 0) continue
+   174→      amount = (r.amount * (r.exchangeRate || 1)) / boxRate
+   175→    }
+   176→    balance += sign * amount
+   177→  }
+   178→  return round2(balance)
+   179→}
+   180→
+   181→/** كل الصناديق بأرصدتها الحية + الإجمالي بالأساس */
+   182→export async function listCashboxesWithBalances(db: PrismaClient) {
+   183→  return db.$transaction(async (tx) => {
+   184→    const boxes = await tx.cashbox.findMany({
+   185→      where: { isArchived: false },
+   186→      orderBy: [{ isDefault: "desc" }, { id: "asc" }],
+   187→      include: { currency: true },
+   188→    })
+   189→    const out: CashboxBalanceRow[] = []
+   190→    for (const b of boxes) {
+   191→      const [balance, last, count] = await Promise.all([
+   192→        computeCashboxBalance(tx, b.id),
+   193→        tx.cashTx.findFirst({
+   194→          where: { OR: [{ cashboxId: b.id }, { toCashboxId: b.id }] },
+   195→          orderBy: [{ txDate: "desc" }, { id: "desc" }],
+   196→          select: { txDate: true },
+   197→        }),
+   198→        tx.cashTx.count({ where: { OR: [{ cashboxId: b.id }, { toCashboxId: b.id }] } }),
+   199→      ])
+   200→      out.push({
+   201→        id: b.id,
+   202→        name: b.name,
+   203→        currencyId: b.currencyId,
+   204→        currencyCode: b.currency.code,
+   205→        isDefault: b.isDefault,
+   206→        balance,
+   207→        balanceBase: round2(toBase(balance, b.currency.isBase ? 1 : await rateAt(tx, b.currencyId, todayStr()))),
+   208→        lastTxDate: last?.txDate ?? null,
+   209→        txCount: count,
+   210→      })
+   211→    }
+   212→    const totalBase = round2(out.reduce((s, b) => s + b.balanceBase, 0))
+   213→    return { cashboxes: out, totalBase }
+   214→  })
+   215→}
+   216→
+   217→// ─── حفظ حركة نقدية ───
+   218→
+   219→export interface SaveCashTxPayload {
+   220→  txType: CashTxType
+   221→  cashboxId: number
+   222→  toCashboxId?: number | null
+   223→  currencyId?: number | null
+   224→  exchangeRate?: number | null
+   225→  amount: number
+   226→  txDate?: string
+   227→  description?: string | null
+   228→  expenseCategoryId?: number | null
+   229→  employeeId?: number | null
+   230→  customerId?: number | null
+   231→  supplierId?: number | null
+   232→  refType?: string | null
+   233→  refId?: number | null
+   234→}
+   235→
+   236→export interface CashTxDto {
+   237→  id: number
+   238→  txType: string
+   239→  txTypeLabel: string
+   240→  cashboxId: number
+   241→  cashboxName: string
+   242→  toCashboxId: number | null
+   243→  toCashboxName: string | null
+   244→  currencyId: number
+   245→  currencyCode: string
+   246→  amount: number
+   247→  exchangeRate: number
+   248→  amountBase: number
+   249→  txDate: string
+   250→  refType: string | null
+   251→  refId: number | null
+   252→  expenseCategoryId: number | null
+   253→  expenseCategoryName: string | null
+   254→  employeeId: number | null
+   255→  employeeName: string | null
+   256→  customerId: number | null
+   257→  customerName: string | null
+   258→  supplierId: number | null
+   259→  supplierName: string | null
+   260→  description: string | null
+   261→  /** إشارة العرض: داخل (+1) / خارج (−1) */
+   262→  direction: number
+   263→  createdAt: string
+   264→}
+   265→
+   266→const txInclude = {
+   267→  cashbox: { select: { name: true } },
+   268→  toCashbox: { select: { name: true } },
+   269→  currency: { select: { code: true } },
+   270→  expenseCategory: { select: { name: true } },
+   271→  employee: { select: { name: true } },
+   272→  customer: { select: { name: true } },
+   273→  supplier: { select: { name: true } },
+   274→} satisfies Prisma.CashTxInclude
+   275→
+   276→type TxRow = Prisma.CashTxGetPayload<{ include: typeof txInclude }>
+   277→
+   278→export function toCashTxDto(r: TxRow): CashTxDto {
+   279→  return {
+   280→    id: r.id,
+   281→    txType: r.txType,
+   282→    txTypeLabel: TX_TYPE_LABELS[r.txType as CashTxType] ?? r.txType,
+   283→    cashboxId: r.cashboxId,
+   284→    cashboxName: r.cashbox.name,
+   285→    toCashboxId: r.toCashboxId,
+   286→    toCashboxName: r.toCashbox?.name ?? null,
+   287→    currencyId: r.currencyId,
+   288→    currencyCode: r.currency.code,
+   289→    amount: round2(r.amount),
+   290→    exchangeRate: r.exchangeRate,
+   291→    amountBase: round2(toBase(r.amount, r.exchangeRate)),
+   292→    txDate: r.txDate,
+   293→    refType: r.refType,
+   294→    refId: r.refId,
+   295→    expenseCategoryId: r.expenseCategoryId,
+   296→    expenseCategoryName: r.expenseCategory?.name ?? null,
+   297→    employeeId: r.employeeId,
+   298→    employeeName: r.employee?.name ?? null,
+   299→    customerId: r.customerId,
+   300→    customerName: r.customer?.name ?? null,
+   301→    supplierId: r.supplierId,
+   302→    supplierName: r.supplier?.name ?? null,
+   303→    description: r.description,
+   304→    direction:
+   305→      (SIGN_CASHBOX[r.txType as CashTxType] ?? 0) >= 0 && r.txType !== "box_transfer" ? 1 : -1,
+   306→    createdAt: r.createdAt.toISOString(),
+   307→  }
+   308→}
+   309→
+   310→/**
+   311→ * حفظ حركة نقدية (ذرّي) — FR-04-02/03.
+   312→ * قواعد الربط: مصروف ← فئة إلزامياً، سحبية ← موظف إلزامياً،
+   313→ * قبض/صرف ← طرف (عميل/مورد) مستحسن. العملة يجب أن تطابق عملة الصندوق
+   314→ * (عدا التحويل/البنكي حيث تعملة الحركة = عملة المصدر ويُحوَّل للوجهة).
+   315→ */
+   316→export async function saveCashTx(
+   317→  db: PrismaClient,
+   318→  payload: SaveCashTxPayload
+   319→): Promise<{ tx: CashTxDto; cashboxBalance: number; toCashboxBalance: number | null }> {
+   320→  const txDate = payload.txDate || todayStr()
+   321→  return db.$transaction(async (tx) => {
+   322→    const amount = Number(payload.amount)
+   323→    if (!(amount > 0)) throw new DomainError("المبلغ يجب أن يكون أكبر من صفر")
+   324→    const txType = payload.txType
+   325→    if (!CASH_TX_TYPES.includes(txType)) throw new DomainError("نوع الحركة غير معروف")
+   326→
+   327→    const box = await tx.cashbox.findFirst({ where: { id: payload.cashboxId, isArchived: false } })
+   328→    if (!box) throw new DomainError("الصندوق غير موجود أو مؤرشف")
+   329→
+   330→    // الطرف المقابل (تحويل/بنكي)
+   331→    let toBox: { id: number; name: string; currencyId: number } | null = null
+   332→    if (payload.toCashboxId) {
+   333→      const t = await tx.cashbox.findFirst({
+   334→        where: { id: payload.toCashboxId, isArchived: false },
+   335→      })
+   336→      if (!t) throw new DomainError("الصندوق الوجهة غير موجود أو مؤرشف")
+   337→      if (t.id === box.id) throw new DomainError("لا يمكن التحويل إلى نفس الصندوق")
+   338→      toBox = { id: t.id, name: t.name, currencyId: t.currencyId }
+   339→    }
+   340→
+   341→    // ─── قواعد الربط FR-04-03 ───
+   342→    let categoryId: number | null = null
+   343→    let categoryName: string | null = null
+   344→    if (txType === "expense") {
+   345→      if (!payload.expenseCategoryId) throw new DomainError("اختر فئة المصروف")
+   346→      const cat = await tx.expenseCategory.findFirst({
+   347→        where: { id: payload.expenseCategoryId, isArchived: false },
+   348→      })
+   349→      if (!cat) throw new DomainError("فئة المصروف غير موجودة")
+   350→      categoryId = cat.id
+   351→      categoryName = cat.name
+   352→    }
+   353→    let employeeId: number | null = null
+   354→    let employeeName: string | null = null
+   355→    if (txType === "employee_advance" || txType === "salary_batch") {
+   356→      if (!payload.employeeId) throw new DomainError("اختر الموظف")
+   357→      const emp = await tx.employee.findFirst({
+   358→        where: { id: payload.employeeId, isArchived: false },
+   359→      })
+   360→      if (!emp) throw new DomainError("الموظف غير موجود أو مؤرشف")
+   361→      employeeId = emp.id
+   362→      employeeName = emp.name
+   363→    }
+   364→    let customerId: number | null = null
+   365→    let customerName: string | null = null
+   366→    if (payload.customerId) {
+   367→      const c = await tx.customer.findFirst({ where: { id: payload.customerId, isArchived: false } })
+   368→      if (!c) throw new DomainError("العميل غير موجود أو مؤرشف")
+   369→      customerId = c.id
+   370→      customerName = c.name
+   371→    }
+   372→    let supplierId: number | null = null
+   373→    let supplierName: string | null = null
+   374→    if (payload.supplierId) {
+   375→      const s = await tx.supplier.findFirst({ where: { id: payload.supplierId, isArchived: false } })
+   376→      if (!s) throw new DomainError("المورد غير موجود أو مؤرشف")
+   377→      supplierId = s.id
+   378→      supplierName = s.name
+   379→    }
+   380→
+   381→    // ─── العملة والسعر ───
+   382→    const base = await tx.currency.findFirst({ where: { isBase: true } })
+   383→    if (!base) throw new DomainError("لا توجد عملة أساسية معرّفة")
+   384→    const currencyId = payload.currencyId ?? box.currencyId
+   385→    const currency = await tx.currency.findUnique({ where: { id: currencyId } })
+   386→    if (!currency || !currency.isActive) throw new DomainError("العملة غير متاحة")
+   387→    // إلزام تطابق عملة الحركة مع عملة الصندوق (المصدر في التحويل/البنكي)
+   388→    if (currencyId !== box.currencyId) {
+   389→      throw new DomainError("عملة الحركة يجب أن تطابق عملة الصندوق")
+   390→    }
+   391→    let exchangeRate = 1
+   392→    if (!currency.isBase) {
+   393→      const given = Number(payload.exchangeRate ?? 0)
+   394→      if (given > 0) exchangeRate = given
+   395→      else {
+   396→        const row =
+   397→          (await tx.exchangeRate.findUnique({
+   398→            where: { currencyId_rateDate: { currencyId, rateDate: txDate } },
+   399→          })) ??
+   400→          (await tx.exchangeRate.findFirst({
+   401→            where: { currencyId },
+   402→            orderBy: { rateDate: "desc" },
+   403→          }))
+   404→        if (!row || row.rate <= 0)
+   405→          throw new DomainError("لا يوجد سعر صرف لهذه العملة — أدخل السعر يدوياً")
+   406→        exchangeRate = row.rate
+   407→      }
+   408→    }
+   409→
+   410→    // ─── منع الرصيد السالب ───
+   411→    await ensureBoxNotNegative(tx, box.id, amount, txType)
+   412→    if (toBox && txType === "bank_withdraw") {
+   413→      // السحب البنكي: to_cashbox = حساب البنك المصدر — يُخصم منه المبلغ
+   414→      const toBoxRow = await tx.cashbox.findUnique({ where: { id: toBox.id } })
+   415→      if (toBoxRow) {
+   416→        const toBalance = await computeCashboxBalance(tx, toBox.id)
+   417→        const boxRate =
+   418→          toBoxRow.currencyId === currencyId ? 1 : await rateAt(tx, toBoxRow.currencyId, txDate)
+   419→        const converted = round2((amount * exchangeRate) / (boxRate > 0 ? boxRate : 1))
+   420→        if (toBalance - converted < -0.01)
+   421→          throw new DomainError(
+   422→            `رصيد «${toBox.name}» غير كافٍ — المتاح: ${toBalance.toLocaleString("en-US")}`
+   423→          )
+   424→      }
+   425→    }
+   426→
+   427→    // ─── وصف افتراضي ───
+   428→    const label = TX_TYPE_LABELS[txType]
+   429→    const partyLabel =
+   430→      customerName ?? supplierName ?? employeeName ?? categoryName ?? null
+   431→    const description =
+   432→      payload.description?.trim() ||
+   433→      `${label}${partyLabel ? ` — ${partyLabel}` : ""}${
+   434→        txType === "box_transfer" && toBox ? ` (${box.name} ← ${toBox.name})` : ""
+   435→      }`
+   436→
+   437→    const row = await tx.cashTx.create({
+   438→      data: {
+   439→        txType,
+   440→        cashboxId: box.id,
+   441→        toCashboxId: toBox?.id ?? null,
+   442→        currencyId,
+   443→        amount: round4(amount),
+   444→        exchangeRate,
+   445→        txDate,
+   446→        refType: payload.refType ?? null,
+   447→        refId: payload.refId ?? null,
+   448→        expenseCategoryId: categoryId,
+   449→        employeeId,
+   450→        customerId,
+   451→        supplierId,
+   452→        description,
+   453→      },
+   454→      include: txInclude,
+   455→    })
+   456→
+   457→    const cashboxBalance = await computeCashboxBalance(tx, box.id)
+   458→    const toCashboxBalance = toBox ? await computeCashboxBalance(tx, toBox.id) : null
+   459→    return { tx: toCashTxDto(row), cashboxBalance, toCashboxBalance }
+   460→  })
+   461→}
+   462→
+   463→/** فحص عدم سالبية رصيد الصندوق قبل أي حركة خارجة */
+   464→async function ensureBoxNotNegative(
+   465→  tx: Tx,
+   466→  cashboxId: number,
+   467→  amount: number,
+   468→  txType: CashTxType
+   469→): Promise<void> {
+   470→  if (!isOutflowOnCashbox(txType)) return
+   471→  const box = await tx.cashbox.findUnique({ where: { id: cashboxId }, include: { currency: true } })
+   472→  if (!box) return
+   473→  const balance = await computeCashboxBalance(tx, cashboxId)
+   474→  if (balance - amount < -0.01) {
+   475→    throw new DomainError(
+   476→      `رصيد «${box.name}» غير كافٍ — المتاح: ${balance.toLocaleString("en-US")} ${box.currency.code}`
+   477→    )
+   478→  }
+   479→}
+   480→
+   481→// ─── تعديل/حذف حركة يدوية (FR-04-08 — Task 9-a) ───
+   482→
+   483→/** رسالة حماية الحركات المرتبطة بمستندات */
+   484→const PROTECTED_TX_MSG =
+   485→  "حركة مرتبطة بمستند (فاتورة/سند/قسط/رواتب/عمولة) — تُدار من مصدرها"
+   486→
+   487→/**
+   488→ * مساهمة حركة على رصيد صندوق معيّن بعملة ذلك الصندوق — نفس منطق
+   489→ * computeCashboxBalance حرفياً (الإشارة + تحويل العملة عبر rateAt بتاريخ الحركة).
+   490→ */
+   491→async function txContributionOn(
+   492→  tx: Tx,
+   493→  row: { txType: string; currencyId: number; amount: number; exchangeRate: number },
+   494→  side: "cashbox" | "to",
+   495→  boxCurrencyId: number,
+   496→  date: string
+   497→): Promise<number> {
+   498→  const sign =
+   499→    side === "cashbox"
+   500→      ? (SIGN_CASHBOX[row.txType as CashTxType] ?? 0)
+   501→      : (SIGN_TO[row.txType as CashTxType] ?? 0)
+   502→  if (sign === 0) return 0
+   503→  let amount = row.amount
+   504→  if (row.currencyId !== boxCurrencyId) {
+   505→    const boxRate = await rateAt(tx, boxCurrencyId, date)
+   506→    if (boxRate <= 0) return 0
+   507→    amount = (row.amount * (row.exchangeRate || 1)) / boxRate
+   508→  }
+   509→  return sign * amount
+   510→}
+   511→
+   512→/** جلب حركة واحدة كاملة DTO — أو null */
+   513→export async function getCashTx(db: AnyDb, id: number): Promise<CashTxDto | null> {
+   514→  const row = await db.cashTx.findUnique({ where: { id }, include: txInclude })
+   515→  return row ? toCashTxDto(row) : null
+   516→}
+   517→
+   518→export interface UpdateCashTxPayload {
+   519→  amount?: number
+   520→  txDate?: string
+   521→  description?: string | null
+   522→}
+   523→
+   524→/**
+   525→ * تعديل حركة نقدية يدوية (FR-04-08) — الحقول القابلة للتعديل حصراً:
+   526→ * amount / txDate / description (النوع والصندوق والطرف ثابتون).
+   527→ * الحركات المرتبطة بمستند (refType ≠ null) محمية وتُدار من مصدرها.
+   528→ * حارس الرصيد: محاكاة أثر التعديل على الصندوق (والوجهة إن وجدت) قبل الكتابة.
+   529→ */
+   530→export async function updateCashTx(
+   531→  db: PrismaClient,
+   532→  id: number,
+   533→  payload: UpdateCashTxPayload
+   534→): Promise<{ tx: CashTxDto; cashboxBalance: number; toCashboxBalance: number | null }> {
+   535→  return db.$transaction(async (tx) => {
+   536→    const row = await tx.cashTx.findUnique({
+   537→      where: { id },
+   538→      include: { cashbox: true, toCashbox: true, currency: true },
+   539→    })
+   540→    if (!row) throw new DomainError("الحركة غير موجودة", 404)
+   541→    if (row.refType != null) throw new DomainError(PROTECTED_TX_MSG)
+   542→
+   543→    // ─── القيم الجديدة ───
+   544→    const newAmount = payload.amount !== undefined ? Number(payload.amount) : row.amount
+   545→    if (!(newAmount > 0)) throw new DomainError("المبلغ يجب أن يكون أكبر من صفر")
+   546→    const newDate = payload.txDate !== undefined ? payload.txDate : row.txDate
+   547→    if (typeof newDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
+   548→      throw new DomainError("تاريخ الحركة غير صالح (YYYY-MM-DD)")
+   549→    }
+   550→    const newDescription =
+   551→      payload.description === undefined
+   552→        ? row.description
+   553→        : payload.description?.trim()
+   554→          ? payload.description.trim()
+   555→          : null
+   556→
+   557→    // ─── حارس الرصيد: محاكاة الأثر قبل الكتابة ───
+   558→    const box = await tx.cashbox.findUnique({
+   559→      where: { id: row.cashboxId },
+   560→      include: { currency: true },
+   561→    })
+   562→    if (!box) throw new DomainError("الصندوق غير موجود", 404)
+   563→
+   564→    const oldRow = {
+   565→      txType: row.txType,
+   566→      currencyId: row.currencyId,
+   567→      amount: row.amount,
+   568→      exchangeRate: row.exchangeRate,
+   569→    }
+   570→    const newRow = { ...oldRow, amount: newAmount }
+   571→
+   572→    const balance = await computeCashboxBalance(tx, box.id)
+   573→    const oldOnBox = await txContributionOn(tx, oldRow, "cashbox", box.currencyId, row.txDate)
+   574→    const newOnBox = await txContributionOn(tx, newRow, "cashbox", box.currencyId, newDate)
+   575→    const resultingBox = round2(balance - oldOnBox + newOnBox)
+   576→    if (resultingBox < -0.01) {
+   577→      throw new DomainError(
+   578→        `رصيد الصندوق «${box.name}» لا يسمح — المتاح بعد التعديل: ${resultingBox.toLocaleString("en-US")} ${box.currency.code}`
+   579→      )
+   580→    }
+   581→
+   582→    // الوجهة (تحويل/بنكي بين صندوقين — قد تختلف عملتها فتُحاكى بالتحويل كما بالأرصدة)
+   583→    let toBoxId: number | null = null
+   584→    if (row.toCashboxId) {
+   585→      const toBox = await tx.cashbox.findUnique({
+   586→        where: { id: row.toCashboxId },
+   587→        include: { currency: true },
+   588→      })
+   589→      if (toBox) {
+   590→        toBoxId = toBox.id
+   591→        const toBalance = await computeCashboxBalance(tx, toBox.id)
+   592→        const oldOnTo = await txContributionOn(tx, oldRow, "to", toBox.currencyId, row.txDate)
+   593→        const newOnTo = await txContributionOn(tx, newRow, "to", toBox.currencyId, newDate)
+   594→        const resultingTo = round2(toBalance - oldOnTo + newOnTo)
+   595→        if (resultingTo < -0.01) {
+   596→          throw new DomainError(
+   597→            `رصيد الصندوق «${toBox.name}» لا يسمح — المتاح بعد التعديل: ${resultingTo.toLocaleString("en-US")} ${toBox.currency.code}`
+   598→          )
+   599→        }
+   600→      }
+   601→    }
+   602→
+   603→    const updated = await tx.cashTx.update({
+   604→      where: { id },
+   605→      data: { amount: round4(newAmount), txDate: newDate, description: newDescription },
+   606→      include: txInclude,
+   607→    })
+   608→    const cashboxBalance = await computeCashboxBalance(tx, box.id)
+   609→    const toCashboxBalance = toBoxId ? await computeCashboxBalance(tx, toBoxId) : null
+   610→    return { tx: toCashTxDto(updated), cashboxBalance, toCashboxBalance }
+   611→  })
+   612→}
+   613→
+   614→/**
+   615→ * حذف حركة نقدية يدوية (FR-04-08) — المرتبطة بمستند ممنوعة،
+   616→ * ولا يجوز أن يُنزل الحذف رصيد أي صندوق تحت الصفر.
+   617→ */
+   618→export async function deleteCashTx(
+   619→  db: PrismaClient,
+   620→  id: number
+   621→): Promise<{ ok: true; cashboxBalance: number }> {
+   622→  return db.$transaction(async (tx) => {
+   623→    const row = await tx.cashTx.findUnique({
+   624→      where: { id },
+   625→      include: { cashbox: true, toCashbox: true, currency: true },
+   626→    })
+   627→    if (!row) throw new DomainError("الحركة غير موجودة", 404)
+   628→    if (row.refType != null) throw new DomainError(PROTECTED_TX_MSG)
+   629→
+   630→    const box = await tx.cashbox.findUnique({
+   631→      where: { id: row.cashboxId },
+   632→      include: { currency: true },
+   633→    })
+   634→    if (!box) throw new DomainError("الصندوق غير موجود", 404)
+   635→
+   636→    const contrib = {
+   637→      txType: row.txType,
+   638→      currencyId: row.currencyId,
+   639→      amount: row.amount,
+   640→      exchangeRate: row.exchangeRate,
+   641→    }
+   642→    const balance = await computeCashboxBalance(tx, box.id)
+   643→    const onBox = await txContributionOn(tx, contrib, "cashbox", box.currencyId, row.txDate)
+   644→    const resultingBox = round2(balance - onBox)
+   645→    if (resultingBox < -0.01) {
+   646→      throw new DomainError(
+   647→        `رصيد الصندوق «${box.name}» لا يسمح — المتاح بعد الحذف: ${resultingBox.toLocaleString("en-US")} ${box.currency.code}`
+   648→      )
+   649→    }
+   650→    if (row.toCashboxId) {
+   651→      const toBox = await tx.cashbox.findUnique({
+   652→        where: { id: row.toCashboxId },
+   653→        include: { currency: true },
+   654→      })
+   655→      if (toBox) {
+   656→        const toBalance = await computeCashboxBalance(tx, toBox.id)
+   657→        const onTo = await txContributionOn(tx, contrib, "to", toBox.currencyId, row.txDate)
+   658→        const resultingTo = round2(toBalance - onTo)
+   659→        if (resultingTo < -0.01) {
+   660→          throw new DomainError(
+   661→            `رصيد الصندوق «${toBox.name}» لا يسمح — المتاح بعد الحذف: ${resultingTo.toLocaleString("en-US")} ${toBox.currency.code}`
+   662→          )
+   663→        }
+   664→      }
+   665→    }
+   666→
+   667→    await tx.cashTx.delete({ where: { id } })
+   668→    const cashboxBalance = await computeCashboxBalance(tx, box.id)
+   669→    return { ok: true as const, cashboxBalance }
+   670→  })
+   671→}
+   672→
+   673→// ─── سجل الحركات ───
+   674→
+   675→export async function listCashTx(
+   676→  db: AnyDb,
+   677→  filters: {
+   678→    cashboxId?: number
+   679→    type?: string
+   680→    from?: string
+   681→    to?: string
+   682→    q?: string
+   683→    page?: number
+   684→    limit?: number
+   685→  }
+   686→): Promise<{ txs: CashTxDto[]; total: number; page: number; pages: number; totals: { in: number; out: number } }> {
+   687→  const page = Math.max(1, filters.page ?? 1)
+   688→  const limit = Math.min(100, filters.limit ?? 25)
+   689→  const where: Prisma.CashTxWhereInput = {
+   690→    ...(filters.cashboxId
+   691→      ? { OR: [{ cashboxId: filters.cashboxId }, { toCashboxId: filters.cashboxId }] }
+   692→      : {}),
+   693→    ...(filters.type ? { txType: filters.type } : {}),
+   694→    ...(filters.from || filters.to
+   695→      ? { txDate: { ...(filters.from ? { gte: filters.from } : {}), ...(filters.to ? { lte: filters.to } : {}) } }
+   696→      : {}),
+   697→    ...(filters.q ? { description: { contains: filters.q } } : {}),
+   698→  }
+   699→  const [rows, total, inAgg, outAgg] = await Promise.all([
+   700→    db.cashTx.findMany({
+   701→      where,
+   702→      orderBy: [{ txDate: "desc" }, { id: "desc" }],
+   703→      skip: (page - 1) * limit,
+   704→      take: limit,
+   705→      include: txInclude,
+   706→    }),
+   707→    db.cashTx.count({ where }),
+   708→    db.cashTx.aggregate({
+   709→      _sum: { amount: true },
+   710→      where: { ...where, txType: { in: ["receipt", "bank_withdraw", "opening"] } },
+   711→    }),
+   712→    db.cashTx.aggregate({
+   713→      _sum: { amount: true },
+   714→      where: {
+   715→        ...where,
+   716→        txType: { in: ["payment", "expense", "employee_advance", "commission_payout", "bank_deposit", "salary_batch"] },
+   717→      },
+   718→    }),
+   719→  ])
+   720→  return {
+   721→    txs: rows.map(toCashTxDto),
+   722→    total,
+   723→    page,
+   724→    pages: Math.max(1, Math.ceil(total / limit)),
+   725→    totals: { in: round2(inAgg._sum.amount ?? 0), out: round2(outAgg._sum.amount ?? 0) },
+   726→  }
+   727→}
+   728→
+   729→// ─── الوردية (Shift) ───
+   730→
+   731→export interface ShiftBreakdown {
+   732→  cashSales: number // مبيعات نقدية (قبض مرتبط بفواتير)
+   733→  collections: number // تحصيلات (سندات + أقساط + قبض حر)
+   734→  otherIn: number // سحب بنكي/افتتاحي
+   735→  expenses: number
+   736→  payments: number // صرف لموردين
+   737→  advances: number // سحبيات
+   738→  commissions: number
+   739→  salaries: number
+   740→  bankDeposits: number
+   741→  transfersOut: number
+   742→  transfersIn: number
+   743→  net: number
+   744→}
+   745→
+   746→export interface ShiftStateDto {
+   747→  cashboxId: number
+   748→  cashboxName: string
+   749→  currencyCode: string
+   750→  openShift: {
+   751→    id: number
+   752→    openedAt: string
+   753→    openingCount: number
+   754→    notes: string | null
+   755→  } | null
+   756→  /** الرصيد الحالي المتوقع بالعد */
+   757→  expected: number
+   758→  /** حركات الفترة منذ فتح الوردية (أو اليوم) */
+   759→  breakdown: ShiftBreakdown
+   760→  history: Array<{
+   761→    id: number
+   762→    openedAt: string
+   763→    closedAt: string
+   764→    openingCount: number | null
+   765→    expected: number | null
+   766→    counted: number | null
+   767→    difference: number | null
+   768→    notes: string | null
+   769→  }>
+   770→}
+   771→
+   772→function shiftStartDate(openedAt: string): string {
+   773→  return openedAt.slice(0, 10) // YYYY-MM-DD من ISO
+   774→}
+   775→
+   776→/** حركات صندوق منذ تاريخ (تصنيفها لتقرير الوردية) */
+   777→async function shiftBreakdown(tx: Tx, cashboxId: number, from: string): Promise<ShiftBreakdown> {
+   778→  const rows = await tx.cashTx.findMany({
+   779→    where: {
+   780→      txDate: { gte: from },
+   781→      OR: [{ cashboxId }, { toCashboxId: cashboxId }],
+   782→    },
+   783→    select: { txType: true, refType: true, cashboxId: true, toCashboxId: true, amount: true },
+   784→  })
+   785→  const b: ShiftBreakdown = {
+   786→    cashSales: 0,
+   787→    collections: 0,
+   788→    otherIn: 0,
+   789→    expenses: 0,
+   790→    payments: 0,
+   791→    advances: 0,
+   792→    commissions: 0,
+   793→    salaries: 0,
+   794→    bankDeposits: 0,
+   795→    transfersOut: 0,
+   796→    transfersIn: 0,
+   797→    net: 0,
+   798→  }
+   799→  for (const r of rows) {
+   800→    // حركات تسوية الفرق (إقفال وردية) ليست نشاطاً تجارياً — تُستثنى من التصنيف
+   801→    if (r.refType === "shift_reconcile") continue
+   802→    const onSource = r.cashboxId === cashboxId
+   803→    switch (r.txType) {
+   804→      case "receipt":
+   805→        if (onSource) {
+   806→          if (r.refType === "invoice") b.cashSales += r.amount
+   807→          else b.collections += r.amount
+   808→        }
+   809→        break
+   810→      case "bank_withdraw":
+   811→        if (onSource) b.otherIn += r.amount
+   812→        break
+   813→      case "opening":
+   814→        if (onSource) b.otherIn += r.amount
+   815→        break
+   816→      case "expense":
+   817→        if (onSource) b.expenses += r.amount
+   818→        break
+   819→      case "payment":
+   820→        if (onSource) b.payments += r.amount
+   821→        break
+   822→      case "employee_advance":
+   823→        if (onSource) b.advances += r.amount
+   824→        break
+   825→      case "commission_payout":
+   826→        if (onSource) b.commissions += r.amount
+   827→        break
+   828→      case "salary_batch":
+   829→        if (onSource) b.salaries += r.amount
+   830→        break
+   831→      case "bank_deposit":
+   832→        if (onSource) b.bankDeposits += r.amount
+   833→        break
+   834→      case "box_transfer":
+   835→        if (onSource) b.transfersOut += r.amount
+   836→        else if (r.toCashboxId === cashboxId) b.transfersIn += r.amount
+   837→        break
+   838→    }
+   839→  }
+   840→  b.net =
+   841→    b.cashSales +
+   842→    b.collections +
+   843→    b.otherIn +
+   844→    b.transfersIn -
+   845→    (b.expenses +
+   846→      b.payments +
+   847→      b.advances +
+   848→      b.commissions +
+   849→      b.salaries +
+   850→      b.bankDeposits +
+   851→      b.transfersOut)
+   852→  for (const k of Object.keys(b) as Array<keyof ShiftBreakdown>) {
+   853→    b[k] = round2(b[k])
+   854→  }
+   855→  return b
+   856→}
+   857→
+   858→/** حالة وردية صندوق: المفتوحة + الرصيد المتوقع + التصنيف + السجل */
+   859→export async function getShiftState(db: PrismaClient, cashboxId: number): Promise<ShiftStateDto> {
+   860→  return db.$transaction(async (tx) => {
+   861→    const box = await tx.cashbox.findUnique({ where: { id: cashboxId }, include: { currency: true } })
+   862→    if (!box) throw new DomainError("الصندوق غير موجود")
+   863→    const [open, history, expected] = await Promise.all([
+   864→      tx.shift.findFirst({ where: { cashboxId, closedAt: null }, orderBy: { id: "desc" } }),
+   865→      tx.shift.findMany({
+   866→        where: { cashboxId, closedAt: { not: null } },
+   867→        orderBy: { id: "desc" },
+   868→        take: 20,
+   869→      }),
+   870→      computeCashboxBalance(tx, cashboxId),
+   871→    ])
+   872→    const from = open ? shiftStartDate(open.openedAt) : todayStr()
+   873→    const breakdown = await shiftBreakdown(tx, cashboxId, from)
+   874→    return {
+   875→      cashboxId,
+   876→      cashboxName: box.name,
+   877→      currencyCode: box.currency.code,
+   878→      openShift: open
+   879→        ? { id: open.id, openedAt: open.openedAt, openingCount: open.openingCount ?? 0, notes: open.notes }
+   880→        : null,
+   881→      expected,
+   882→      breakdown,
+   883→      history: history.map((h) => ({
+   884→        id: h.id,
+   885→        openedAt: h.openedAt,
+   886→        closedAt: h.closedAt ?? "",
+   887→        openingCount: h.openingCount,
+   888→        expected: h.expected,
+   889→        counted: h.counted,
+   890→        difference: h.difference,
+   891→        notes: h.notes,
+   892→      })),
+   893→    }
+   894→  })
+   895→}
+   896→
+   897→/** فتح وردية — openingCount افتراضياً الرصيد الحالي */
+   898→export async function openShift(
+   899→  db: PrismaClient,
+   900→  payload: { cashboxId: number; openingCount?: number; notes?: string }
+   901→) {
+   902→  return db.$transaction(async (tx) => {
+   903→    const box = await tx.cashbox.findUnique({ where: { id: payload.cashboxId } })
+   904→    if (!box) throw new DomainError("الصندوق غير موجود")
+   905→    const existing = await tx.shift.findFirst({ where: { cashboxId: box.id, closedAt: null } })
+   906→    if (existing) throw new DomainError("هناك وردية مفتوحة لهذا الصندوق بالفعل")
+   907→    const balance = await computeCashboxBalance(tx, box.id)
+   908→    const row = await tx.shift.create({
+   909→      data: {
+   910→        cashboxId: box.id,
+   911→        openedAt: new Date().toISOString(),
+   912→        openingCount: payload.openingCount != null ? payload.openingCount : balance,
+   913→        notes: payload.notes ?? null,
+   914→      },
+   915→    })
+   916→    return { shift: row, balance }
+   917→  })
+   918→}
+   919→
+   920→export interface CloseShiftResult {
+   921→  shiftId: number
+   922→  cashboxName: string
+   923→  currencyCode: string
+   924→  openedAt: string
+   925→  closedAt: string
+   926→  expected: number
+   927→  counted: number
+   928→  difference: number
+   929→  breakdown: ShiftBreakdown
+   930→  /** هل أُنشئت حركة تسوية للفرق آلياً */
+   931→  reconciled: boolean
+   932→  reconcileTxId: number | null
+   933→}
+   934→
+   935→/**
+   936→ * إقفال الوردية — FR-04-04: المتوقع (الرصيد المحسوب) مقابل العدّ الفعلي.
+   937→ * reconcile=true (Task 9-a): عند فرق ≥ 0.01 تُنشأ داخل نفس المعاملة حركة
+   938→ * تسوية نقدية (receipt للزيادة / payment للعجز) بـ refType='shift_reconcile'
+   939→ * و refId=رقم الوردية — فتصبح محمية من التعديل/الحذف اليدوي ويطابق رصيد
+   940→ * الصندوق المحسوب العدّ الفعلي بعد الإقفال.
+   941→ */
+   942→export async function closeShift(
+   943→  db: PrismaClient,
+   944→  payload: { cashboxId: number; counted: number; notes?: string; reconcile?: boolean }
+   945→): Promise<CloseShiftResult> {
+   946→  return db.$transaction(async (tx) => {
+   947→    const box = await tx.cashbox.findUnique({ where: { id: payload.cashboxId }, include: { currency: true } })
+   948→    if (!box) throw new DomainError("الصندوق غير موجود")
+   949→    const counted = Number(payload.counted)
+   950→    if (!(counted >= 0)) throw new DomainError("أدخل العدّ الفعلي للنقدية")
+   951→    let shift = await tx.shift.findFirst({ where: { cashboxId: box.id, closedAt: null }, orderBy: { id: "desc" } })
+   952→    if (!shift) {
+   953→      // لا وردية مفتوحة → ننشئ ونقفل فوراً (تقرير لحظي)
+   954→      shift = await tx.shift.create({
+   955→        data: {
+   956→          cashboxId: box.id,
+   957→          openedAt: new Date().toISOString(),
+   958→          openingCount: await computeCashboxBalance(tx, box.id),
+   959→        },
+   960→      })
+   961→    }
+   962→    const expected = await computeCashboxBalance(tx, box.id)
+   963→    const difference = round2(counted - expected)
+   964→    const closedAt = new Date().toISOString()
+   965→    await tx.shift.update({
+   966→      where: { id: shift.id },
+   967→      data: { closedAt, expected, counted, difference, notes: payload.notes ?? shift.notes },
+   968→    })
+   969→    // التصنيف يُحسب قبل حركة التسوية — يبقى انعكاساً لنشاط الوردية نفسها
+   970→    const breakdown = await shiftBreakdown(tx, box.id, shiftStartDate(shift.openedAt))
+   971→
+   972→    // ─── تسوية الفرق آلياً كحركة نقدية ───
+   973→    let reconciled = false
+   974→    let reconcileTxId: number | null = null
+   975→    if (payload.reconcile && Math.abs(difference) >= 0.01) {
+   976→      const reconcileTx = await tx.cashTx.create({
+   977→        data: {
+   978→          txType: difference > 0 ? "receipt" : "payment",
+   979→          cashboxId: box.id,
+   980→          toCashboxId: null,
+   981→          currencyId: box.currencyId,
+   982→          amount: round2(Math.abs(difference)),
+   983→          exchangeRate: box.currency.isBase ? 1 : await rateAt(tx, box.currencyId, todayStr()),
+   984→          txDate: todayStr(),
+   985→          refType: "shift_reconcile",
+   986→          refId: shift.id,
+   987→          description:
+   988→            difference > 0
+   989→              ? `تسوية زيادة عدّ — إقفال الوردية #${shift.id}`
+   990→              : `تسوية عجز عدّ — إقفال الوردية #${shift.id}`,
+   991→        },
+   992→      })
+   993→      reconciled = true
+   994→      reconcileTxId = reconcileTx.id
+   995→    }
+   996→
+   997→    return {
+   998→      shiftId: shift.id,
+   999→      cashboxName: box.name,
+  1000→      currencyCode: box.currency.code,
+  1001→      openedAt: shift.openedAt,
+  1002→      closedAt,
+  1003→      expected,
+  1004→      counted,
+  1005→      difference,
+  1006→      breakdown,
+  1007→      reconciled,
+  1008→      reconcileTxId,
+  1009→    }
+  1010→  })
+  1011→}
+  1012→
+  1013→// ─── فئات المصروفات ───
+  1014→
+  1015→export interface ExpenseCategoryDto {
+  1016→  id: number
+  1017→  name: string
+  1018→  isArchived: boolean
+  1019→  txCount: number
+  1020→  totalBase: number
+  1021→  lastUsedAt: string | null
+  1022→}
+  1023→
+  1024→export async function listExpenseCategories(db: AnyDb): Promise<ExpenseCategoryDto[]> {
+  1025→  const cats = await db.expenseCategory.findMany({ orderBy: { id: "asc" } })
+  1026→  const out: ExpenseCategoryDto[] = []
+  1027→  for (const c of cats) {
+  1028→    const [txCount, agg, last] = await Promise.all([
+  1029→      db.cashTx.count({ where: { expenseCategoryId: c.id } }),
+  1030→      db.cashTx.aggregate({
+  1031→        _sum: { amount: true },
+  1032→        where: { expenseCategoryId: c.id, txType: "expense" },
+  1033→      }),
+  1034→      db.cashTx.findFirst({
+  1035→        where: { expenseCategoryId: c.id },
+  1036→        orderBy: { txDate: "desc" },
+  1037→        select: { txDate: true },
+  1038→      }),
+  1039→    ])
+  1040→    out.push({
+  1041→      id: c.id,
+  1042→      name: c.name,
+  1043→      isArchived: c.isArchived,
+  1044→      txCount,
+  1045→      totalBase: round2(agg._sum.amount ?? 0),
+  1046→      lastUsedAt: last?.txDate ?? null,
+  1047→    })
+  1048→  }
+  1049→  return out
+  1050→}
+  1051→

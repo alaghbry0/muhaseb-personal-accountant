@@ -4,18 +4,25 @@
  * بطاقة صنف — رأس (اسم + شارة فئة) + قسم الباركود (SVG Code128 + نسخ + طباعة ملصقات)
  * + شبكة أرصدة لكل مخزن + بطاقات أسعار البيع لكل عملة + التكلفة (WAC) + مبيعات 30 يوماً
  * + آخر 10 حركات + إجراءات: تعديل / أرشفة / جرد سريع.
+ * لوحة «طباعة الملصقات»: منتقي صيغة (A4 / حراري 58مم / حراري 80مم) + منتقي رمز
+ * (Code128 / QR معاين حياً) + معاينة ملصق بنسب الصيغة (Task 10-a).
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   Copy, Pencil, Archive, ClipboardCheck, Printer, Boxes, Loader2,
   TrendingDown, Warehouse as WarehouseIcon, Coins, Barcode as BarcodeIcon,
+  QrCode as QrCodeIcon,
 } from "lucide-react";
 import { getJson, postJson, patchJson } from "@/lib/api";
 import { formatAmount, formatDateDisplay, formatTime12 } from "@/lib/format";
 import { code128Svg, barcodeDisplayText } from "@/lib/barcode";
-import { printLabelSheet, labelPriceText, LABELS_MAX } from "@/components/print/label-print";
+import { qrSvg, qrPayload } from "@/lib/qr";
+import {
+  printLabelSheet, labelPriceText, LABELS_MAX, LABELS_MAX_THERMAL,
+  type LabelFormat, type LabelCode,
+} from "@/components/print/label-print";
 import { useNav } from "@/lib/nav";
 import type { BootstrapData as BootType } from "@/lib/types";
 import {
@@ -78,6 +85,19 @@ export const MOVEMENT_COLORS: Record<string, string> = {
   opening: "bg-[#64748B]/20 text-[#94A3B8] border-[#64748B]/30",
 };
 
+/** خيارات منتقي صيغة الملصق (Task 10-a) */
+const LABEL_FORMATS: Array<{ id: LabelFormat; title: string; sub: string }> = [
+  { id: "a4", title: "ورق A4", sub: "24 ملصقاً/صفحة" },
+  { id: "t58", title: "حراري 58مم", sub: "58×32مم" },
+  { id: "t80", title: "حراري 80مم", sub: "80×50مم" },
+];
+
+/** خيارات منتقي رمز الملصق */
+const LABEL_CODES: Array<{ id: LabelCode; title: string }> = [
+  { id: "code128", title: "باركود Code128" },
+  { id: "qr", title: "رمز QR" },
+];
+
 export default function InventoryProductCardScreen({
   productId: pid,
 }: {
@@ -93,6 +113,10 @@ export default function InventoryProductCardScreen({
   const [busy, setBusy] = useState(false);
   const [labelOpen, setLabelOpen] = useState(false);
   const [labelCount, setLabelCount] = useState("24");
+  const [labelFormat, setLabelFormat] = useState<LabelFormat>("a4");
+  const [labelCode, setLabelCode] = useState<LabelCode>("code128");
+  const [previewQr, setPreviewQr] = useState("");
+  const [printing, setPrinting] = useState(false);
 
   const { data, isLoading } = useQuery<ProductCardResponse>({
     queryKey: ["product", id],
@@ -104,6 +128,25 @@ export default function InventoryProductCardScreen({
     queryFn: () => getJson<BootType>("/api/bootstrap"),
     staleTime: 5 * 60_000,
   });
+
+  // مدخلات معاينة QR تُشتق قبل أي return مبكر (الـhook لا يجوز بعد return)
+  const qrName = data?.product?.name;
+  const qrBarcode = data?.product?.barcode;
+  const qrPrice = data?.product?.prices.find(
+    (pr) => pr.code === boot?.baseCurrency?.code
+  )?.price;
+
+  // معاينة QR حية: تُجلب عند اختيار QR (qrSvg واعد — JSON عربي مضغوط كحمولة)
+  useEffect(() => {
+    if (labelCode !== "qr" || !qrName || !qrBarcode) return;
+    let cancelled = false;
+    void qrSvg(qrPayload({ name: qrName, barcode: qrBarcode, price: qrPrice })).then((svg) => {
+      if (!cancelled) setPreviewQr(svg);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [labelCode, qrName, qrBarcode, qrPrice]);
 
   if (isLoading || !data) {
     return (
@@ -120,7 +163,10 @@ export default function InventoryProductCardScreen({
   const company = boot?.company;
   const basePrice = p.prices.find((pr) => pr.code === boot?.baseCurrency?.code)?.price;
   const baseCurrencyCode = boot?.baseCurrency?.code;
-  const labelCountNum = Math.min(LABELS_MAX, Math.max(1, Math.floor(Number(labelCount)) || 0));
+
+  const isThermal = labelFormat !== "a4";
+  const labelMax = isThermal ? LABELS_MAX_THERMAL : LABELS_MAX;
+  const labelCountNum = Math.min(labelMax, Math.max(1, Math.floor(Number(labelCount)) || 0));
 
   async function copyBarcode() {
     if (!p.barcode) return;
@@ -181,6 +227,34 @@ export default function InventoryProductCardScreen({
       /* toast */
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function doPrintLabels() {
+    if (!p.barcode) return;
+    setPrinting(true);
+    try {
+      await printLabelSheet({
+        company: company
+          ? {
+              name: company.name,
+              phone: company.phone,
+              address: company.address,
+              footerText: company.footerText,
+            }
+          : null,
+        product: {
+          name: p.name,
+          barcode: p.barcode,
+          price: basePrice,
+          currencyCode: baseCurrencyCode ?? undefined,
+        },
+        count: labelCountNum,
+        format: labelFormat,
+        codeType: labelCode,
+      });
+    } finally {
+      setPrinting(false);
     }
   }
 
@@ -518,11 +592,80 @@ export default function InventoryProductCardScreen({
       <PosSheet
         open={labelOpen}
         onOpenChange={setLabelOpen}
-        title="طباعة ملصقات الباركود"
-        description={p.barcode ? `ملصقات رف «${p.name}» — شبكة A4 بقياس 63×25مم` : undefined}
+        title="طباعة الملصقات"
+        description={
+          p.barcode
+            ? labelFormat === "a4"
+              ? `ملصقات رف «${p.name}» — شبكة A4 بقياس 63×25مم`
+              : `ملصقات رف «${p.name}» — حراري ${labelFormat === "t58" ? "58×32" : "80×50"}مم`
+            : undefined
+        }
       >
         {p.barcode ? (
           <div className="flex flex-col gap-3 pb-2">
+            {/* منتقي الصيغة */}
+            <div>
+              <span className="mb-1 block text-[13px] font-medium text-muted-foreground">صيغة الورق</span>
+              <div className="grid grid-cols-3 gap-1.5" role="group" aria-label="صيغة الملصق">
+                {LABEL_FORMATS.map((o) => {
+                  const active = labelFormat === o.id;
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={() => setLabelFormat(o.id)}
+                      aria-pressed={active}
+                      className={cn(
+                        "flex min-h-[44px] flex-col items-center justify-center gap-0.5 rounded-xl border px-1.5 py-2 text-center transition-all active:scale-[0.98]",
+                        active
+                          ? "border-primary bg-primary/10"
+                          : "border-border/60 bg-card hover:border-primary/40"
+                      )}
+                    >
+                      <span className="text-[12.5px] font-bold text-foreground">{o.title}</span>
+                      <span className="text-[10.5px] text-muted-foreground">{o.sub}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* منتقي الرمز */}
+            <div>
+              <span className="mb-1 block text-[13px] font-medium text-muted-foreground">رمز الملصق</span>
+              <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="رمز الملصق">
+                {LABEL_CODES.map((o) => {
+                  const active = labelCode === o.id;
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={() => setLabelCode(o.id)}
+                      aria-pressed={active}
+                      className={cn(
+                        "flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-center transition-all active:scale-[0.98]",
+                        active
+                          ? "border-primary bg-primary/10"
+                          : "border-border/60 bg-card hover:border-primary/40"
+                      )}
+                    >
+                      {o.id === "code128" ? (
+                        <BarcodeIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                      ) : (
+                        <QrCodeIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                      )}
+                      <span className="text-[12.5px] font-bold text-foreground">{o.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {labelCode === "qr" && (
+                <p className="mt-1 text-[11.5px] leading-4 text-muted-foreground">
+                  يحتوي الاسم والباركود والسعر — يقرأه أي قارئ
+                </p>
+              )}
+            </div>
+
             <div>
               <label className="mb-1 block text-[13px] font-medium text-muted-foreground" htmlFor="label-count">
                 عدد الملصقات
@@ -532,73 +675,122 @@ export default function InventoryProductCardScreen({
                 type="number"
                 inputMode="numeric"
                 min={1}
-                max={LABELS_MAX}
+                max={labelMax}
                 dir="ltr"
                 value={labelCount}
                 onChange={(e) => setLabelCount(e.target.value.replace(/\D/g, "").slice(0, 3))}
                 className="font-num h-14 w-full rounded-xl border border-border bg-muted/60 px-3 text-[18px] font-bold text-foreground outline-none focus:border-primary/70"
               />
               <p className="mt-1 text-[11.5px] text-muted-foreground">
-                كل صفحة A4 تتسع لـ 24 ملصقاً (3×8) — حتى {LABELS_MAX} ملصقاً
+                {labelFormat === "a4"
+                  ? `كل صفحة A4 تتسع لـ 24 ملصقاً (3×8) — حتى ${LABELS_MAX} ملصقاً`
+                  : `كل ملصق يُطبع بصفحة مستقلة — حتى ${LABELS_MAX_THERMAL} ملصقاً`}
               </p>
             </div>
 
-            {/* معاينة ملصق واحد — ورقة بيضاء دائماً (حبر على ورق) في الوضعين */}
+            {/* معاينة ملصق واحد — أبيض دائماً (حبر على ورق/حراري) في الوضعين،
+                وأبعاد البطاقة بنسب الصيغة: A4 كما كان، t58 بنسبة 58:32، t80 بنسبة 80:50 */}
             <div>
               <span className="mb-1 block text-[13px] font-medium text-muted-foreground">معاينة الملصق</span>
               <div
                 dir="rtl"
-                className="mx-auto flex w-[240px] flex-col items-center gap-0.5 rounded-md border border-dashed border-[#94A3B8] bg-white p-2 text-[#0F172A] shadow-sm"
+                className={cn(
+                  "mx-auto flex w-[240px] flex-col items-center bg-white p-2 text-[#0F172A] shadow-sm",
+                  labelFormat === "a4"
+                    ? "gap-0.5 rounded-md border border-dashed border-[#94A3B8]"
+                    : "justify-between overflow-hidden rounded-md border border-[#94A3B8]",
+                  labelFormat === "t58" && "h-[132px]",
+                  labelFormat === "t80" && "h-[150px]"
+                )}
               >
-                <span className="max-w-full truncate text-[8.5px] leading-tight text-[#475569]">
+                <span
+                  className={cn(
+                    "max-w-full truncate leading-tight text-[#475569]",
+                    labelFormat === "t80" ? "text-[9px]" : "text-[8.5px]"
+                  )}
+                >
                   {company?.name ?? "المتجر"}
                 </span>
-                <span className="line-clamp-2 max-w-full text-center text-[10px] font-extrabold leading-snug">
+                <span
+                  className={cn(
+                    "max-w-full text-center font-extrabold leading-snug",
+                    labelFormat === "a4" && "line-clamp-2 text-[10px]",
+                    labelFormat === "t58" && "line-clamp-1 text-[10.5px]",
+                    labelFormat === "t80" && "line-clamp-1 text-[12px]"
+                  )}
+                >
                   {p.name}
                 </span>
-                <div
-                  dir="ltr"
-                  className="mt-0.5 h-7 w-full text-black [&>svg]:block [&>svg]:h-full [&>svg]:w-full"
-                  dangerouslySetInnerHTML={{
-                    __html: code128Svg(p.barcode, { showText: false }),
-                  }}
-                />
-                {/* أرقام الباركود غربية دائماً (استثناء المسح الضوئي) — بلا formatAmount */}
-                <span dir="ltr" className="font-num text-[10px] font-bold tracking-widest">
-                  {barcodeDisplayText(p.barcode)}
-                </span>
+                {labelCode === "qr" ? (
+                  // QR مربع بعرض كامل — SVG من qrSvg (viewBox + path stroke)
+                  previewQr ? (
+                    <div
+                      dir="ltr"
+                      className={cn(
+                        "[&>svg]:block [&>svg]:h-full [&>svg]:w-full",
+                        labelFormat === "a4" && "size-[46px]",
+                        labelFormat === "t58" && "size-[64px]",
+                        labelFormat === "t80" && "size-[84px]"
+                      )}
+                      aria-label="معاينة رمز QR للصنف"
+                      role="img"
+                      dangerouslySetInnerHTML={{ __html: previewQr }}
+                    />
+                  ) : (
+                    <div
+                      aria-hidden
+                      className={cn(
+                        "flex items-center justify-center rounded-sm border border-dashed border-[#94A3B8] bg-white",
+                        labelFormat === "a4" && "size-[46px]",
+                        labelFormat === "t58" && "size-[64px]",
+                        labelFormat === "t80" && "size-[84px]"
+                      )}
+                    >
+                      <Loader2 className="size-4 animate-spin text-[#94A3B8]" />
+                    </div>
+                  )
+                ) : (
+                  <>
+                    <div
+                      dir="ltr"
+                      className={cn(
+                        "w-full text-black [&>svg]:block [&>svg]:h-full [&>svg]:w-full",
+                        labelFormat === "a4" && "mt-0.5 h-7",
+                        labelFormat === "t58" && "h-6",
+                        labelFormat === "t80" && "h-8"
+                      )}
+                      dangerouslySetInnerHTML={{
+                        __html: code128Svg(p.barcode, { showText: false }),
+                      }}
+                    />
+                    {/* أرقام الباركود غربية دائماً (استثناء المسح الضوئي) — بلا formatAmount */}
+                    <span
+                      dir="ltr"
+                      className={cn(
+                        "font-num font-bold tracking-widest",
+                        labelFormat === "t80" ? "text-[10px]" : "text-[9.5px]"
+                      )}
+                    >
+                      {barcodeDisplayText(p.barcode)}
+                    </span>
+                  </>
+                )}
                 {basePrice != null && (
-                  <span className="font-num text-[11px] font-extrabold">
+                  <span
+                    className={cn(
+                      "font-num font-extrabold",
+                      labelFormat === "a4" && "text-[11px]",
+                      labelFormat === "t58" && "text-[11.5px]",
+                      labelFormat === "t80" && "text-[13.5px]"
+                    )}
+                  >
                     {labelPriceText(basePrice, baseCurrencyCode)}
                   </span>
                 )}
               </div>
             </div>
 
-            <PrimaryButton
-              block
-              disabled={labelCountNum < 1}
-              onClick={() =>
-                printLabelSheet({
-                  company: company
-                    ? {
-                        name: company.name,
-                        phone: company.phone,
-                        address: company.address,
-                        footerText: company.footerText,
-                      }
-                    : null,
-                  product: {
-                    name: p.name,
-                    // داخل رد النداء لا يضيّق TS التعبير الشرطي أعلاه — الباركود مثبت وجوده هنا
-                    barcode: p.barcode!,
-                    price: basePrice,
-                    currencyCode: baseCurrencyCode ?? undefined,
-                  },
-                  count: labelCountNum,
-                })
-              }
-            >
+            <PrimaryButton block loading={printing} disabled={labelCountNum < 1} onClick={doPrintLabels}>
               <Printer className="size-5" aria-hidden /> طباعة
             </PrimaryButton>
           </div>

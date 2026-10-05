@@ -515,6 +515,54 @@ export async function getCashTx(db: AnyDb, id: number): Promise<CashTxDto | null
   return row ? toCashTxDto(row) : null
 }
 
+/**
+ * رصيد الصندوق (المصدر) بعد حركة — لحظة تنفيذها شاملةً مساهمتها (Task 10-b).
+ * حساب تراكمي بنفس منطق computeCashboxBalance حرفياً (إشارة الجانب + تحويل
+ * العملة عبر rateAt بتاريخ كل حركة) لكن مقطوعاً عند هذه الحركة: جمع مساهمات
+ * كل حركات الصندوق «لاحقة» عليها يُطرح من الرصيد الحالي — والحركة اللاحقة
+ * هي (txDate > تاريخها) أو (txDate = تاريخها وid > معرفها) — لأن الترتيب
+ * المعتمد في العرض والأرصدة هو [txDate ثم id].
+ * يُعاد null فقط إن تعذر الحساب (الصندوق غير موجود مثلاً).
+ */
+export async function getCashTxWithBalance(
+  db: PrismaClient,
+  id: number
+): Promise<{ tx: CashTxDto; balanceAfter: number | null } | null> {
+  return db.$transaction(async (tx) => {
+    const row = await tx.cashTx.findUnique({ where: { id }, include: txInclude })
+    if (!row) return null
+    const box = await tx.cashbox.findUnique({
+      where: { id: row.cashboxId },
+      include: { currency: true },
+    })
+    if (!box) return { tx: toCashTxDto(row), balanceAfter: null }
+
+    // كل حركات الصندوق مرتبة زمنياً — نجمع المساهمات حتى حركتنا شاملةً
+    const rows = await tx.cashTx.findMany({
+      where: { OR: [{ cashboxId: box.id }, { toCashboxId: box.id }] },
+      select: {
+        id: true,
+        txType: true,
+        cashboxId: true,
+        toCashboxId: true,
+        currencyId: true,
+        amount: true,
+        exchangeRate: true,
+        txDate: true,
+      },
+      orderBy: [{ txDate: "asc" }, { id: "asc" }],
+    })
+    let balance = 0
+    for (const r of rows) {
+      const isAfter = r.txDate > row.txDate || (r.txDate === row.txDate && r.id > row.id)
+      if (isAfter) continue
+      const side: "cashbox" | "to" = r.cashboxId === box.id ? "cashbox" : "to"
+      balance += await txContributionOn(tx, r, side, box.currencyId, r.txDate)
+    }
+    return { tx: toCashTxDto(row), balanceAfter: round2(balance) }
+  })
+}
+
 export interface UpdateCashTxPayload {
   amount?: number
   txDate?: string
@@ -773,11 +821,19 @@ function shiftStartDate(openedAt: string): string {
   return openedAt.slice(0, 10) // YYYY-MM-DD من ISO
 }
 
-/** حركات صندوق منذ تاريخ (تصنيفها لتقرير الوردية) */
-async function shiftBreakdown(tx: Tx, cashboxId: number, from: string): Promise<ShiftBreakdown> {
+/** حركات صندوق منذ تاريخ (تصنيفها لتقرير الوردية) — وإلى تاريخ اختياري (Task 10-b)
+ * * الحد المعروف: التصنيف بدقة يوم (txDate تاريخ فقط بلا وقت) — لوردية مقفلة
+ *   (from=يوم الفتح، to=يوم الإقفال) قد يشمل حركات نفس يوم الإقفال التي جرت
+ *   بعد لحظة الإغلاق. حد مقبول وموثّق (لا وقت تنفيذ مخزّن للحركات). */
+async function shiftBreakdown(
+  tx: Tx,
+  cashboxId: number,
+  from: string,
+  to?: string
+): Promise<ShiftBreakdown> {
   const rows = await tx.cashTx.findMany({
     where: {
-      txDate: { gte: from },
+      txDate: { gte: from, ...(to ? { lte: to } : {}) },
       OR: [{ cashboxId }, { toCashboxId: cashboxId }],
     },
     select: { txType: true, refType: true, cashboxId: true, toCashboxId: true, amount: true },
@@ -1006,6 +1062,63 @@ export async function closeShift(
       breakdown,
       reconciled,
       reconcileTxId,
+    }
+  })
+}
+
+// ─── تفاصيل وردية مقفلة (Task 10-b) ───
+
+/** تفاصيل وردية مقفلة: نفس CloseShiftResult + حقلا الافتتاح (لا يكسران الطباعة) */
+export type ShiftDetailsResult = CloseShiftResult & {
+  openingCount: number | null
+  notes: string | null
+}
+
+/**
+ * تفاصيل وردية مقفلة (Task 10-b) — جدول Shift لا يخزّن التصنيف فيُعاد
+ * حسابه من الحركات: from = يوم openedAt و to = يوم closedAt (بدقة يوم —
+ * الحد المعروف الموثّق عند shiftBreakdown). reconciled/reconcileTxId تُستنتجان
+ * من وجود حركة refType='shift_reconcile' مرتبطة بالوردية (Task 9-a).
+ */
+export async function getShiftDetails(
+  db: PrismaClient,
+  shiftId: number
+): Promise<ShiftDetailsResult> {
+  return db.$transaction(async (tx) => {
+    const shift = await tx.shift.findUnique({ where: { id: shiftId } })
+    if (!shift) throw new DomainError("الوردية غير موجودة", 404)
+    if (!shift.closedAt) throw new DomainError("الوردية ما زالت مفتوحة — أقفلها أولاً", 400)
+
+    const box = await tx.cashbox.findUnique({
+      where: { id: shift.cashboxId },
+      include: { currency: true },
+    })
+    if (!box) throw new DomainError("الصندوق غير موجود", 404)
+
+    const breakdown = await shiftBreakdown(
+      tx,
+      box.id,
+      shiftStartDate(shift.openedAt),
+      shift.closedAt.slice(0, 10)
+    )
+    const reconcileTx = await tx.cashTx.findFirst({
+      where: { refType: "shift_reconcile", refId: shift.id },
+      select: { id: true },
+    })
+    return {
+      shiftId: shift.id,
+      cashboxName: box.name,
+      currencyCode: box.currency.code,
+      openedAt: shift.openedAt,
+      closedAt: shift.closedAt,
+      expected: shift.expected ?? 0,
+      counted: shift.counted ?? 0,
+      difference: shift.difference ?? 0,
+      breakdown,
+      reconciled: reconcileTx != null,
+      reconcileTxId: reconcileTx?.id ?? null,
+      openingCount: shift.openingCount,
+      notes: shift.notes,
     }
   })
 }

@@ -16,6 +16,7 @@ import { AppHeader, AmountText, EmptyState, KeyValueRow, ListRow, PrimaryButton,
 import { Checkbox } from "@/components/ui/checkbox";
 import { PosSheet } from "@/components/pos/pos-sheet";
 import { printShiftReport } from "@/components/cash/shift-print";
+import { ShiftDetailsSheet, shiftBreakdownRows } from "@/components/cash/shift-details-sheet";
 import { usePrintCompany } from "@/components/reports/csv";
 import type { ShiftStateDto, CloseShiftResult } from "@/domain/cash";
 import { cn } from "@/lib/utils";
@@ -35,6 +36,8 @@ export default function CashShiftScreen(params: { cashboxId?: number }) {
   const [result, setResult] = useState<CloseShiftResult | null>(null);
   /** تسجيل تسوية الفرق تلقائياً كحركة نقدية (FR-04-04 — Task 9-a) */
   const [reconcile, setReconcile] = useState(true);
+  /** وردية مقفلة مفتوحة تفاصيلها (Task 10-b) */
+  const [detailsShift, setDetailsShift] = useState<{ id: number; cashboxName: string; currencyCode: string } | null>(null);
 
   const { data: boxesData } = useQuery<BoxesResponse>({
     queryKey: ["cashbox", "boxes"],
@@ -50,23 +53,10 @@ export default function CashShiftScreen(params: { cashboxId?: number }) {
   });
 
   const boxes = boxesData?.cashboxes ?? [];
-  const b = state?.breakdown;
 
   const closeFlow = useMemo(
-    () => [
-      { label: "مبيعات نقدية", value: b?.cashSales ?? 0, sign: 1 },
-      { label: "تحصيلات (سندات/أقساط)", value: b?.collections ?? 0, sign: 1 },
-      { label: "سحب بنكي / أخرى", value: b?.otherIn ?? 0, sign: 1 },
-      { label: "تحويلات واردة", value: b?.transfersIn ?? 0, sign: 1 },
-      { label: "مصاريف", value: b?.expenses ?? 0, sign: -1 },
-      { label: "صرف لموردين", value: b?.payments ?? 0, sign: -1 },
-      { label: "سحبيات موظفين", value: b?.advances ?? 0, sign: -1 },
-      { label: "عمولات مصروفة", value: b?.commissions ?? 0, sign: -1 },
-      { label: "رواتب", value: b?.salaries ?? 0, sign: -1 },
-      { label: "إيداعات بنكية", value: b?.bankDeposits ?? 0, sign: -1 },
-      { label: "تحويلات صادرة", value: b?.transfersOut ?? 0, sign: -1 },
-    ].filter((r) => Math.abs(r.value) > 0.005),
-    [b]
+    () => (state ? shiftBreakdownRows(state.breakdown).filter((r) => Math.abs(r.value) > 0.005) : []),
+    [state]
   );
 
   const doClose = async () => {
@@ -249,6 +239,13 @@ export default function CashShiftScreen(params: { cashboxId?: number }) {
                 {state.history.map((h) => (
                   <ListRow
                     key={h.id}
+                    onClick={() =>
+                      setDetailsShift({
+                        id: h.id,
+                        cashboxName: state.cashboxName,
+                        currencyCode: state.currencyCode,
+                      })
+                    }
                     leading={
                       <span
                         className={cn(
@@ -298,6 +295,13 @@ export default function CashShiftScreen(params: { cashboxId?: number }) {
           </>
         )}
       </div>
+
+      {/* ─── تفاصيل وردية مقفلة (Task 10-b) ─── */}
+      <ShiftDetailsSheet
+        shift={detailsShift}
+        open={!!detailsShift}
+        onOpenChange={(o) => !o && setDetailsShift(null)}
+      />
 
       {/* ─── تأكيد الإقفال ─── */}
       <PosSheet

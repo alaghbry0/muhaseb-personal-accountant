@@ -6,14 +6,14 @@
  * بشارة صفراء وتُدار من مصدرها). الحالات: view | edit | delete داخل ورقة واحدة.
  */
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeftRight, ArrowDownLeft, ArrowUpRight, Receipt, UserMinus,
   BadgeDollarSign, Banknote, ChevronLeft, Inbox, Landmark, Link2,
   TriangleAlert, Pencil, Trash2, Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
-import { patchJson } from "@/lib/api";
+import { getJson, patchJson } from "@/lib/api";
 import { formatAmount, formatDate, formatDateDisplay } from "@/lib/format";
 import { AmountText, KeyValueRow, PrimaryButton } from "@/components/ds";
 import { PosSheet } from "@/components/pos/pos-sheet";
@@ -107,6 +107,14 @@ function TxBody({ tx, onOpenChange }: { tx: CashTxDto; onOpenChange: (o: boolean
   const [mode, setMode] = useState<"view" | "edit" | "delete">("view");
   const [current, setCurrent] = useState<CashTxDto>(tx);
   const [deleting, setDeleting] = useState(false);
+
+  // رصيد الصندوق (المصدر) بعد الحركة — يُجلب عند فتح الورقة (Task 10-b)
+  // مفتاح بادئته ["cashbox"] فيُلغى ويعاد جلبه مع التعديل/الحذف تلقائياً
+  const { data: balanceData } = useQuery<{ tx: CashTxDto; balanceAfter: number | null }>({
+    queryKey: ["cashbox", "tx-balance", current.id],
+    queryFn: () => getJson<{ tx: CashTxDto; balanceAfter: number | null }>(`/api/cashbox/tx/${current.id}`),
+  });
+  const balanceAfter = balanceData?.balanceAfter ?? null;
 
   const meta = TX_META[current.txType] ?? { icon: Receipt, color: "#94A3B8", label: current.txType };
   const Icon = meta.icon;
@@ -206,6 +214,19 @@ function TxBody({ tx, onOpenChange }: { tx: CashTxDto; onOpenChange: (o: boolean
           </span>
         )}
       </div>
+
+      {/* رصيد الصندوق بعد الحركة (Task 10-b) — بعملة صندوق المصدر */}
+      {balanceData && balanceAfter != null && (
+        <div className="flex items-center justify-between rounded-2xl border border-primary/30 bg-primary/8 px-3.5 py-2.5">
+          <span className="text-[13px] font-bold text-muted-foreground">رصيد الصندوق بعدها</span>
+          <AmountText
+            value={balanceAfter}
+            currency={current.currencyCode}
+            size="md"
+            variant={balanceAfter >= 0 ? "primary" : "neg"}
+          />
+        </div>
+      )}
 
       {/* حماية الحركة المرتبطة */}
       {linked && (

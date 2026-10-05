@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getCashTx, updateCashTx, deleteCashTx } from "@/domain/cash";
+import { getCashTx, getCashTxWithBalance, updateCashTx, deleteCashTx } from "@/domain/cash";
 import { DomainError } from "@/domain/invoice-save";
 import { logAudit } from "@/domain/audit";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/cashbox/tx/[id] — تفاصيل حركة واحدة (FR-04-08).
+ * GET /api/cashbox/tx/[id] — تفاصيل حركة واحدة (FR-04-08) + رصيد الصندوق
+ * (المصدر) بعد الحركة لحظة تنفيذها شاملةً مساهمتها (Task 10-b).
+ * التوافق الرجعي: الحقل tx كما كان — balanceAfter إضافة اختيارية (null إن تعذر).
  */
 export async function GET(
   _req: NextRequest,
@@ -15,11 +17,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const tx = await getCashTx(db, Number(id));
-    if (!tx) {
+    const result = await getCashTxWithBalance(db, Number(id));
+    if (!result) {
       return NextResponse.json({ error: "الحركة غير موجودة" }, { status: 404 });
     }
-    return NextResponse.json({ tx });
+    return NextResponse.json({ tx: result.tx, balanceAfter: result.balanceAfter });
   } catch (e) {
     console.error("GET /api/cashbox/tx/[id] error:", e);
     return NextResponse.json({ error: "تعذر تحميل الحركة" }, { status: 500 });

@@ -311,3 +311,119 @@ table.a4-items .num {
   font-weight: 800;
   line-height: 1;
 }
+
+/* ─── رمز QR داخل الملصق (Task 10-a) — الحاوية مربعة بحجم الصيغة ─── */
+.label-qr {
+  display: block;
+  margin: 0 auto;
+  flex-shrink: 0;
+}
+.label-qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.label-cell .label-qr {
+  width: 46px;
+  height: 46px;
+}
+
+/* ─── الملصق الحراري 58/80مم (Task 10-a) — ملصق واحد لكل صفحة ───
+   بلا حدود قص: الطابعة الحرارية تقص ذاتياً؛ أبيض/أسود فقط. */
+.label-thermal-doc {
+  width: 100%;
+}
+.label-t58,
+.label-t80 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  text-align: center;
+  overflow: hidden;
+  page-break-after: always;
+  break-after: page;
+}
+.label-t58.last,
+.label-t80.last {
+  page-break-after: auto;
+  break-after: auto;
+}
+.label-t58 {
+  width: 58mm;
+  height: 32mm;
+  padding: 2mm;
+}
+.label-t80 {
+  width: 80mm;
+  height: 50mm;
+  padding: 2mm;
+}
+
+/* الحراري 58مم — خطوط مضغوطة تناسب 32مم ارتفاعاً */
+.label-t58 .label-company {
+  font-size: 6pt;
+  line-height: 1.1;
+}
+.label-t58 .label-name {
+  font-size: 8.5pt;
+  font-weight: 800;
+  line-height: 1.15;
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.label-t58 .label-bar {
+  width: 100%;
+}
+.label-t58 .label-bar svg {
+  display: block;
+  width: 100%;
+  height: 6.5mm;
+}
+.label-t58 .label-digits {
+  font-size: 7pt;
+}
+.label-t58 .label-price {
+  font-size: 9.5pt;
+}
+.label-t58 .label-qr {
+  width: 16mm;
+  height: 16mm;
+}
+
+/* الحراري 80مم — خطوط أكبر وQR أعرض (FR-01-02) */
+.label-t80 .label-company {
+  font-size: 7pt;
+  line-height: 1.1;
+}
+.label-t80 .label-name {
+  font-size: 11pt;
+  font-weight: 800;
+  line-height: 1.15;
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.label-t80 .label-bar {
+  width: 100%;
+}
+.label-t80 .label-bar svg {
+  display: block;
+  width: 100%;
+  height: 10mm;
+}
+.label-t80 .label-digits {
+  font-size: 8pt;
+}
+.label-t80 .label-price {
+  font-size: 13pt;
+}
+.label-t80 .label-qr {
+  width: 28mm;
+  height: 28mm;
+}
