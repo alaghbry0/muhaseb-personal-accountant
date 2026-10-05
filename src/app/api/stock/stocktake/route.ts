@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { saveStocktake, DomainError, type SaveStocktakePayload } from "@/domain/inventory";
+import { logAudit } from "@/domain/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as Record<string, unknown>;
     const result = await saveStocktake(db, body as unknown as SaveStocktakePayload);
+    await logAudit(db, { action: "stocktake_commit", entity: "stocktake", entityId: result.stocktakeId, details: { linesCount: result.linesCount, totalDiff: result.totalDiff } });
     return NextResponse.json(result, { status: 201 });
   } catch (e) {
     if (e instanceof DomainError) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { saveProduct, DomainError, type SaveProductPayload } from "@/domain/inventory";
+import { logAudit } from "@/domain/audit";
 import type { ProductSearchItemDto } from "@/domain/dto";
 import type { Prisma } from "@prisma/client";
 
@@ -118,6 +119,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as Record<string, unknown>;
     const result = await saveProduct(db, body as unknown as SaveProductPayload);
+    await logAudit(db, { action: "product_create", entity: "product", entityId: result.productId, details: { name: String(body.name ?? ""), barcode: result.barcode } });
     return NextResponse.json(result, { status: 201 });
   } catch (e) {
     if (e instanceof DomainError) {

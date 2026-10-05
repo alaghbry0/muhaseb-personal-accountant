@@ -13,7 +13,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   ArrowRight, Trash2, Plus, Minus, LayoutGrid, Pause, FileText,
-  Users, Wallet, Warehouse, Coins, UserCheck, X, ReceiptText,
+  Users, Wallet, Warehouse, Coins, UserCheck, X, ReceiptText, AlertTriangle,
 } from "lucide-react";
 import { getJson, postJson } from "@/lib/api";
 import { formatAmount, formatDate, formatTime12 } from "@/lib/format";
@@ -24,6 +24,7 @@ import type {
   InvoiceListResponse,
   ProductSearchResponse,
   SaveInvoiceResponse,
+  CustomerListResponse,
 } from "@/domain/dto";
 import type { BootstrapData } from "@/lib/types";
 import { PrimaryButton, SearchBar } from "@/components/ds";
@@ -34,6 +35,7 @@ import { CustomerPicker, OptionPicker } from "@/components/pos/customer-picker";
 import { DiscountSheet, TaxSheet } from "@/components/pos/adjust-sheets";
 import { PaymentSheet } from "@/components/pos/payment-sheet";
 import { SuccessSheet } from "@/components/pos/success-sheet";
+import { PosSheet } from "@/components/pos/pos-sheet";
 import { printInvoice } from "@/components/print/receipt-print";
 import { shareInvoiceWhatsApp } from "@/lib/share";
 import { cn } from "@/lib/utils";
@@ -80,6 +82,13 @@ export default function SalesPosScreen({ mode: modeParam }: { mode?: string }) {
     queryKey: ["pos-reps"],
     queryFn: () => getJson<{ reps: RepDto[] }>("/api/parties/reps?limit=50"),
     staleTime: 5 * 60_000,
+  });
+
+  // العملاء (نفس مفتاح كاش لوحة العميل) — لفحص حد الائتمان قبل البيع الآجل/المختلط (FR-03-05)
+  const { data: customersData } = useQuery<CustomerListResponse>({
+    queryKey: ["pos-customers"],
+    queryFn: () => getJson<CustomerListResponse>("/api/parties/customers?limit=100"),
+    staleTime: 60_000,
   });
 
   // الإعدادات الافتراضية عند أول تحميل
@@ -176,6 +185,13 @@ export default function SalesPosScreen({ mode: modeParam }: { mode?: string }) {
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [success, setSuccess] = useState<SaveInvoiceResponse | null>(null);
+  // تحذير تجاوز حد الائتمان (FR-03-05): يظهر قبل الحفظ بأزرار متابعة/إلغاء
+  const [creditWarn, setCreditWarn] = useState<{
+    limit: number;
+    balanceAfter: number;
+    dueBase: number;
+    proceed: () => void;
+  } | null>(null);
 
   function clientValidate(payMode: "cash" | "credit" | "mixed" | "held"): boolean {
     if (pos.lines.length === 0) {
@@ -210,6 +226,39 @@ export default function SalesPosScreen({ mode: modeParam }: { mode?: string }) {
     paidAmount?: number
   ) {
     if (!clientValidate(payMode)) return;
+
+    // فحص حد الائتمان قبل الحفظ الآجل/المختلط (FR-03-05 تحذير — ليس منعاً)
+    if (payMode === "credit" || payMode === "mixed") {
+      const cust = customersData?.customers.find((c) => c.id === pos.customerId);
+      if (cust && cust.creditLimit > 0) {
+        const due =
+          payMode === "credit"
+            ? totals.total
+            : Math.max(0, totals.total - (paidAmount ?? 0));
+        const dueBase = due * rate; // تحويل للعملة الأساسية (الرصيد والحد بها)
+        const balanceAfter = (cust.balance ?? 0) + dueBase;
+        if (balanceAfter > cust.creditLimit) {
+          setCreditWarn({
+            limit: cust.creditLimit,
+            balanceAfter,
+            dueBase,
+            proceed: () => {
+              setCreditWarn(null);
+              void doSaveInvoice(payMode, paidAmount);
+            },
+          });
+          return;
+        }
+      }
+    }
+
+    await doSaveInvoice(payMode, paidAmount);
+  }
+
+  async function doSaveInvoice(
+    payMode: "cash" | "credit" | "mixed" | "held",
+    paidAmount?: number
+  ) {
     setSaving(payMode);
     try {
       const res = await postJson<SaveInvoiceResponse>("/api/invoices", {
@@ -905,6 +954,48 @@ export default function SalesPosScreen({ mode: modeParam }: { mode?: string }) {
           nextNoQ.refetch();
         }}
       />
+
+      {/* تحذير تجاوز حد الائتمان (FR-03-05) */}
+      <PosSheet
+        open={!!creditWarn}
+        onOpenChange={(o) => {
+          if (!o) setCreditWarn(null);
+        }}
+        title="تجاوز حد الائتمان"
+        description="يمكنك المتابعة على مسؤوليتك أو إلغاء العملية"
+      >
+        {creditWarn ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-start gap-2.5 rounded-2xl border border-[#FBBF24]/40 bg-[#FBBF24]/10 p-3.5">
+              <AlertTriangle className="mt-0.5 size-5 shrink-0 text-[#FBBF24]" aria-hidden />
+              <div className="flex flex-col gap-1 text-[13px] leading-6">
+                <span className="font-bold text-[#FBBF24]">
+                  رصيد العميل بعد هذه الفاتورة سيتجاوز حد الائتمان المسموح
+                </span>
+                <span className="font-num" dir="rtl">
+                  الحد: {formatAmount(creditWarn.limit, { currency: boot?.baseCurrency?.code ?? "YER" })} — الرصيد
+                  بعد الفاتورة: {formatAmount(creditWarn.balanceAfter, { currency: boot?.baseCurrency?.code ?? "YER" })}
+                </span>
+                <span className="text-muted-foreground">
+                  المبلغ الآجل الجديد: {formatAmount(creditWarn.dueBase, { currency: boot?.baseCurrency?.code ?? "YER" })}
+                </span>
+              </div>
+            </div>
+            <div className="flex gap-2.5">
+              <PrimaryButton
+                variant="outline"
+                className="flex-1"
+                onClick={() => setCreditWarn(null)}
+              >
+                إلغاء
+              </PrimaryButton>
+              <PrimaryButton variant="danger" className="flex-1" onClick={creditWarn.proceed}>
+                متابعة على مسؤوليتي
+              </PrimaryButton>
+            </div>
+          </div>
+        ) : null}
+      </PosSheet>
     </div>
   );
 }

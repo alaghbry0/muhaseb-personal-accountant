@@ -11,6 +11,7 @@ import {
   LayoutDashboard, ShoppingCart, Package, BarChart3, LayoutGrid,
 } from "lucide-react";
 import { useNav, type TabId } from "@/lib/nav";
+import { useDisplaySettings } from "@/components/settings/numbers-context";
 import { registry } from "@/screens/registry";
 import { cn } from "@/lib/utils";
 import { StubScreen } from "@/components/ds";
@@ -25,6 +26,8 @@ const TABS: Array<{ id: TabId; label: string; icon: typeof LayoutDashboard }> = 
 
 export function AppShell() {
   const { activeTab, stacks, direction, seq, setTab } = useNav();
+  // حجم الخط (عادي/كبير) — إعدادات العرض، تُطبّق على إطار التطبيق كله (Task 5)
+  const fontSize = useDisplaySettings((s) => s.fontSize);
   const current = stacks[activeTab].at(-1) ?? { screen: activeTab };
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -62,7 +65,10 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-dvh justify-center bg-[#080E1A]">
-      <div className="relative flex min-h-dvh w-full max-w-[430px] flex-col border-border/40 bg-background shadow-[0_0_60px_rgba(0,0,0,0.6)] md:border-x">
+      <div
+        className="relative flex min-h-dvh w-full max-w-[430px] flex-col border-border/40 bg-background shadow-[0_0_60px_rgba(0,0,0,0.6)] md:border-x"
+        style={fontSize === "large" ? { zoom: 1.08 } : undefined}
+      >
         {/* منطقة المحتوى */}
         <main
           ref={scrollRef}

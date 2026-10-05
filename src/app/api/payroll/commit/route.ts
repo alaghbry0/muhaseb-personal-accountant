@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { commitPayroll } from "@/domain/payroll";
 import { DomainError } from "@/domain/invoice-save";
+import { logAudit } from "@/domain/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,7 @@ export async function POST(req: NextRequest) {
       exchangeRate: body.exchangeRate != null ? Number(body.exchangeRate) : null,
       txDate: String(body.txDate ?? ""),
     });
+    await logAudit(db, { action: "payroll_commit", entity: "salary_period", details: { period, paid: result.paid, totalNet: result.totalNet, rows: result.rows.length } });
     return NextResponse.json(result);
   } catch (e) {
     if (e instanceof DomainError) {

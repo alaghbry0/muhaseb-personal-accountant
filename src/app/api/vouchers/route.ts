@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { saveVoucher, listVouchers } from "@/domain/parties";
 import { DomainError } from "@/domain/invoice-save";
+import { logAudit } from "@/domain/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest) {
       description: body.description || null,
       refInvoiceId: body.refInvoiceId != null ? Number(body.refInvoiceId) : null,
     });
+    await logAudit(db, { action: "voucher_create", entity: "cash_tx", entityId: result.voucher.id, details: { kind: body.kind, partyType: body.partyType, amount: result.voucher.amount, txDate: result.voucher.txDate } });
     return NextResponse.json(result);
   } catch (e) {
     if (e instanceof DomainError) {

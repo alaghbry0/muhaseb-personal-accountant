@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { saveProduct, DomainError, generateEan13 } from "@/domain/inventory";
+import { logAudit } from "@/domain/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -113,6 +114,7 @@ export async function PATCH(
       ...(body as object),
       id: productId,
     } as Parameters<typeof saveProduct>[1]);
+    await logAudit(db, { action: "product_update", entity: "product", entityId: productId, details: { fields: Object.keys(body as object) } });
     return NextResponse.json(result);
   } catch (e) {
     if (e instanceof DomainError) {

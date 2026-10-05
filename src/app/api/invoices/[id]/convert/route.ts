@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { convertHeldInvoice, DomainError } from "@/domain/invoice-save";
 import { fetchInvoiceDetail } from "@/domain/dto";
+import { logAudit } from "@/domain/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ export async function POST(
       cashboxId: body.cashboxId ?? null,
     });
     const invoice = await fetchInvoiceDetail(db, invoiceId);
+    await logAudit(db, { action: "invoice_convert_held", entity: "invoice", entityId: invoiceId, details: { invoiceNo: invoice.invoiceNo, payMode: body.payMode, total: invoice.total } });
     return NextResponse.json({ invoice });
   } catch (e) {
     if (e instanceof DomainError) {

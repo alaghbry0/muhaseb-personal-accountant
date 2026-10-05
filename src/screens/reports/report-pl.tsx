@@ -38,7 +38,7 @@ export default function ReportPlScreen() {
       (data?.series ?? []).map((p) => ({
         ...p,
         الايرادات: Math.round(p.revenue),
-        المصروفات: Math.round(p.expenses + p.commissions),
+        المصروفات: Math.round(p.expenses + p.salaries + p.commissions),
         الصافي: Math.round(p.net),
       })),
     [data]
@@ -54,6 +54,7 @@ export default function ReportPlScreen() {
             { label: "− تكلفة المبيعات (مرجّحة)", value: -s.cogs, variant: "neg" as const },
             { label: "= الربح الإجمالي", value: s.grossProfit, variant: "primary" as const, strong: true },
             { label: "− المصروفات التشغيلية", value: -s.expenses, variant: "neg" as const },
+            { label: "− الرواتب", value: -s.salaries, variant: "neg" as const },
             { label: "− عمولات المناديب", value: -s.commissions, variant: "neg" as const },
             { label: "= الربح الصافي", value: s.netProfit, variant: "primary" as const, strong: true },
           ]
@@ -77,10 +78,12 @@ export default function ReportPlScreen() {
         { label: "عدد فواتير البيع", value: s?.salesCount ?? 0 },
         { label: "عدد المرتجعات", value: s?.returnsCount ?? 0 },
         { label: "إجمالي المشتريات", value: s?.purchasesTotal ?? 0 },
+        { label: "الرواتب", value: s?.salaries ?? 0 },
         { label: "هامش الصافي %", value: s?.marginPercent != null ? `${s.marginPercent}%` : "—" },
         { label: "الربح الصافي", value: s?.netProfit ?? 0, emphasis: true },
       ],
-      footerNote: "التكلفة على متوسط التكلفة المرجّح وقت البيع؛ المصروفات والعمولات نقدية ومستحقة بالفترة.",
+      footerNote:
+        "التكلفة على متوسط التكلفة المرجّح وقت البيع؛ المصروفات والرواتب والعمولات نقدية بالفترة — الرواتب صف مستقل من مسير الرواتب وليست ضمن المصروفات.",
     });
   };
 
@@ -117,10 +120,11 @@ export default function ReportPlScreen() {
           <div className="flex flex-col gap-0.5">
             <span className="flex items-center gap-1.5 text-[13.5px] font-bold">
               <BadgeDollarSign className="size-4" aria-hidden />
-              صافي الربح (بعد المصروفات والعمولات)
+              صافي الربح (بعد المصروفات والرواتب والعمولات)
             </span>
             <span className="text-[11.5px] font-medium opacity-75">
-              عمولات: {formatAmount(s?.commissions ?? 0, { currency: cur })}
+              رواتب: {formatAmount(s?.salaries ?? 0, { currency: cur })} • عمولات:{" "}
+              {formatAmount(s?.commissions ?? 0, { currency: cur })}
               {s?.marginPercent != null ? ` • هامش ${s.marginPercent}%` : ""}
             </span>
           </div>

@@ -89,6 +89,7 @@ export interface PlSeriesPoint {
   revenue: number
   cogs: number
   expenses: number
+  salaries: number
   commissions: number
   net: number
 }
@@ -103,6 +104,8 @@ export interface ProfitLossReport {
     cogs: number
     grossProfit: number
     expenses: number
+    /** الرواتب — صف مستقل من salary_batch (مسير 4-b) — ليست ضمن المصروفات (منع الازدواج) */
+    salaries: number
     commissions: number
     netProfit: number
     salesCount: number
@@ -121,7 +124,7 @@ export async function profitAndLoss(db: AnyDb, p: PeriodFilter): Promise<ProfitL
     status: "completed" as const,
     issuedAt: { gte: period.from, lte: period.to },
   })
-  const [salesAgg, returnsAgg, purchasesAgg, purchReturnsAgg, expenseRows, commissionRows, base] =
+  const [salesAgg, returnsAgg, purchasesAgg, purchReturnsAgg, expenseRows, commissionRows, salaryRows, base] =
     await Promise.all([
       db.invoice.aggregate({
         _sum: { totalBase: true, costTotal: true },
@@ -149,6 +152,12 @@ export async function profitAndLoss(db: AnyDb, p: PeriodFilter): Promise<ProfitL
         where: { createdAt: { gte: new Date(`${p.from}T00:00:00`), lte: new Date(`${p.to}T23:59:59`) } },
         select: { amount: true, createdAt: true },
       }),
+      // الرواتب: حركات مسير الرواتب (tx_type='salary_batch' من 4-b) — تُعرض صفاً مستقلاً
+      // «الرواتب» وليس ضمن المصروفات، وإلا ازدوج العد (ملاحظة تسليم 4-a)
+      db.cashTx.findMany({
+        where: { txType: "salary_batch", txDate: { gte: p.from, lte: p.to } },
+        select: { amount: true, exchangeRate: true, txDate: true },
+      }),
       baseCurrencyCode(db),
     ])
 
@@ -157,19 +166,35 @@ export async function profitAndLoss(db: AnyDb, p: PeriodFilter): Promise<ProfitL
   const revenue = round2(salesRevenue - salesReturns)
   const cogs = round2((salesAgg._sum.costTotal ?? 0) - (returnsAgg._sum.costTotal ?? 0))
   const grossProfit = round2(revenue - cogs)
-  const expenses = round2(expenseRows.reduce((s, r) => s + toBase(r.amount, r.exchangeRate), 0))
-  const commissions = round2(commissionRows.reduce((s, r) => s + r.amount, 0))
-  const netProfit = round2(grossProfit - expenses - commissions)
 
-  // مصروفات حسب الفئة
-  const catIds = [...new Set(expenseRows.map((r) => r.expenseCategoryId).filter((x): x is number => x != null))]
-  const cats = catIds.length
-    ? await db.expenseCategory.findMany({ where: { id: { in: catIds } }, select: { id: true, name: true } })
+  // فصل فئة «رواتب» اليدوية عن المصروفات وضمّها لصف الرواتب (منع الازدواج مع salary_batch)
+  const catIdsAll = [...new Set(expenseRows.map((r) => r.expenseCategoryId).filter((x): x is number => x != null))]
+  const catsAll = catIdsAll.length
+    ? await db.expenseCategory.findMany({ where: { id: { in: catIdsAll } }, select: { id: true, name: true } })
     : []
+  const catMapAll = new Map(catsAll.map((c) => [c.id, c.name.trim()]))
+  const isSalaryCat = (id: number | null) => id != null && catMapAll.get(id) === "رواتب"
+
+  const expenses = round2(
+    expenseRows
+      .filter((r) => !isSalaryCat(r.expenseCategoryId))
+      .reduce((s, r) => s + toBase(r.amount, r.exchangeRate), 0)
+  )
+  const salaries = round2(
+    salaryRows.reduce((s, r) => s + toBase(r.amount, r.exchangeRate), 0) +
+      expenseRows
+        .filter((r) => isSalaryCat(r.expenseCategoryId))
+        .reduce((s, r) => s + toBase(r.amount, r.exchangeRate), 0)
+  )
+  const commissions = round2(commissionRows.reduce((s, r) => s + r.amount, 0))
+  const netProfit = round2(grossProfit - expenses - salaries - commissions)
+
+  // مصروفات حسب الفئة (فئة رواتب اليدوية تُدمج في صف الرواتب المستقل)
+  const cats = catsAll.filter((c) => c.name.trim() !== "رواتب")
   const catMap = new Map(cats.map((c) => [c.id, c.name]))
   const catTotals = new Map<string, number>()
   for (const r of expenseRows) {
-    if (r.expenseCategoryId == null) continue
+    if (r.expenseCategoryId == null || isSalaryCat(r.expenseCategoryId)) continue
     const name = catMap.get(r.expenseCategoryId) ?? "أخرى"
     catTotals.set(name, round2((catTotals.get(name) ?? 0) + toBase(r.amount, r.exchangeRate)))
   }
@@ -181,7 +206,7 @@ export async function profitAndLoss(db: AnyDb, p: PeriodFilter): Promise<ProfitL
     const label = bucketLabel(dateStr, byMonth)
     let b = buckets.get(label)
     if (!b) {
-      b = { label, date: byMonth ? `${label}-01` : dateStr, revenue: 0, cogs: 0, expenses: 0, commissions: 0, net: 0 }
+      b = { label, date: byMonth ? `${label}-01` : dateStr, revenue: 0, cogs: 0, expenses: 0, salaries: 0, commissions: 0, net: 0 }
       buckets.set(label, b)
     }
     return b
@@ -208,9 +233,17 @@ export async function profitAndLoss(db: AnyDb, p: PeriodFilter): Promise<ProfitL
     b.revenue = round2(b.revenue - (s._sum.totalBase ?? 0))
     b.cogs = round2(b.cogs - (s._sum.costTotal ?? 0))
   }
-  for (const r of expenseRows) ensureBucket(r.txDate).expenses = round2(ensureBucket(r.txDate).expenses + toBase(r.amount, r.exchangeRate))
+  for (const r of expenseRows) {
+    const b = ensureBucket(r.txDate)
+    if (isSalaryCat(r.expenseCategoryId)) {
+      b.salaries = round2(b.salaries + toBase(r.amount, r.exchangeRate))
+    } else {
+      b.expenses = round2(b.expenses + toBase(r.amount, r.exchangeRate))
+    }
+  }
+  for (const r of salaryRows) ensureBucket(r.txDate).salaries = round2(ensureBucket(r.txDate).salaries + toBase(r.amount, r.exchangeRate))
   for (const c of commissionRows) ensureBucket(dateOnly(c.createdAt)).commissions = round2(ensureBucket(dateOnly(c.createdAt)).commissions + c.amount)
-  for (const b of buckets.values()) b.net = round2(b.revenue - b.cogs - b.expenses - b.commissions)
+  for (const b of buckets.values()) b.net = round2(b.revenue - b.cogs - b.expenses - b.salaries - b.commissions)
   const series = [...buckets.values()].sort((a, b) => (a.date < b.date ? -1 : 1))
 
   return {
@@ -223,6 +256,7 @@ export async function profitAndLoss(db: AnyDb, p: PeriodFilter): Promise<ProfitL
       cogs,
       grossProfit,
       expenses,
+      salaries,
       commissions,
       netProfit,
       salesCount: salesAgg._count,

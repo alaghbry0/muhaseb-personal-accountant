@@ -9,6 +9,7 @@ import {
 } from "@/domain/inventory";
 import { fetchInvoiceDetail, type InvoiceListResponse } from "@/domain/dto";
 import type { Prisma } from "@prisma/client";
+import { logAudit } from "@/domain/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -30,12 +31,14 @@ export async function POST(req: NextRequest) {
         docType: "sale",
       } as Parameters<typeof saveSaleInvoice>[1]);
       const invoice = await fetchInvoiceDetail(db, result.invoiceId);
+      await logAudit(db, { action: "invoice_create", entity: "invoice", entityId: result.invoiceId, details: { docType: "sale", invoiceNo: invoice.invoiceNo, payStatus: invoice.payStatus, total: invoice.total } });
       return NextResponse.json({ invoice, customerBalance: result.customerBalance });
     }
 
     if (docType === "purchase") {
       const result = await savePurchaseInvoice(db, body as unknown as SavePurchasePayload);
       const invoice = await fetchInvoiceDetail(db, result.invoiceId);
+      await logAudit(db, { action: "invoice_create", entity: "invoice", entityId: result.invoiceId, details: { docType: "purchase", invoiceNo: invoice.invoiceNo, total: invoice.total } });
       return NextResponse.json({ invoice, supplierBalance: result.supplierBalance });
     }
 
@@ -45,6 +48,7 @@ export async function POST(req: NextRequest) {
         docType,
       } as unknown as SaveReturnPayload);
       const invoice = await fetchInvoiceDetail(db, result.invoiceId);
+      await logAudit(db, { action: "invoice_create", entity: "invoice", entityId: result.invoiceId, details: { docType, invoiceNo: invoice.invoiceNo, total: invoice.total } });
       return NextResponse.json({
         invoice,
         customerBalance: result.customerBalance,
