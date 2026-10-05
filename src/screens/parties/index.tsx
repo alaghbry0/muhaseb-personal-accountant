@@ -1,13 +1,19 @@
 import type { Component } from "react";
-import { makeStub } from "@/components/ds";
+import PartiesCustomersScreen from "./parties-customers";
+import PartiesCustomerCardScreen from "./parties-customer-card";
+import PartiesSuppliersScreen from "./parties-suppliers";
+import PartiesSupplierCardScreen from "./parties-supplier-card";
+import PartiesVoucherScreen from "./parties-voucher";
+import PartiesRepsScreen from "./parties-reps";
+import PartiesRepCardScreen from "./parties-rep-card";
 
-/** شاشات وحدة الأطراف — تُنفَّذ في المرحلة 3-ب */
+/** شاشات وحدة الأطراف — Task 3-b (العملاء/الموردون/السندات/المناديب) */
 export const screens: Record<string, Component> = {
-  "parties-customers": makeStub("العملاء", "قائمة العملاء وأرصدتهم وحدود الائتمان"),
-  "parties-customer-card": makeStub("بطاقة العميل", "كشف حساب تفصيلي بالرصيد المتحرك"),
-  "parties-suppliers": makeStub("الموردون", "قائمة الموردين والمستحق لهم"),
-  "parties-supplier-card": makeStub("بطاقة المورد", "كشف حساب المورد والسدادات"),
-  "parties-voucher": makeStub("سندات القبض والصرف", "سند قبض من عميل أو صرف لمورد"),
-  "parties-reps": makeStub("المناديب", "مندوبو البيع والتحصيل ونسب العمولة"),
-  "parties-rep-card": makeStub("بطاقة المندوب", "حساب المندوب وعمولاته"),
+  "parties-customers": PartiesCustomersScreen,
+  "parties-customer-card": PartiesCustomerCardScreen,
+  "parties-suppliers": PartiesSuppliersScreen,
+  "parties-supplier-card": PartiesSupplierCardScreen,
+  "parties-voucher": PartiesVoucherScreen,
+  "parties-reps": PartiesRepsScreen,
+  "parties-rep-card": PartiesRepCardScreen,
 };

@@ -25,7 +25,6 @@ import { shareInvoiceWhatsApp, normalizeYemeniPhone } from "@/lib/share";
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription,
 } from "@/components/ui/drawer";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 type ConvertPay = "cash" | "credit" | "mixed";
@@ -37,7 +36,7 @@ export default function SalesInvoiceDetailsScreen({
 }) {
   const id = Number(invoiceId ?? 0);
   const qc = useQueryClient();
-  const { pop } = useNav();
+  const { pop, push } = useNav();
   const [convertOpen, setConvertOpen] = useState(false);
   const [convertPay, setConvertPay] = useState<ConvertPay>("cash");
   const [convertPaid, setConvertPaid] = useState("");
@@ -332,19 +331,14 @@ export default function SalesInvoiceDetailsScreen({
               <CheckCircle2 className="size-5" aria-hidden /> إتمام البيع (تحويل المعلّقة)
             </PrimaryButton>
           ) : (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  disabled
-                  aria-label="مرتجع — متاح في المرحلة القادمة"
-                  className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-5 text-[15px] font-bold text-muted-foreground/70"
-                >
-                  <Undo2 className="size-5" aria-hidden /> مرتجع بيع
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>متاح عبر شاشة المرتجعات — المرحلة القادمة</TooltipContent>
-            </Tooltip>
+            <PrimaryButton
+              variant="warning"
+              onClick={() =>
+                push("purchases-returns", { mode: "sale_return", originalInvoiceId: inv.id })
+              }
+            >
+              <Undo2 className="size-5" aria-hidden /> مرتجع بيع
+            </PrimaryButton>
           )}
 
           <PrimaryButton variant="ghost" onClick={pop}>

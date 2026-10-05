@@ -125,7 +125,7 @@ export async function computeNextDocNo(
 }
 
 /** حل سعر الصرف: الممرَّر ثم سعر تاريخ الفاتورة ثم آخر سعر متاح */
-async function resolveExchangeRate(
+export async function resolveExchangeRate(
   tx: Tx,
   currency: { id: number; isBase: boolean },
   exchangeRate: number | null | undefined,
@@ -161,7 +161,11 @@ export async function computeCustomerBalance(
     db.customer.findUnique({ where: { id: customerId }, select: { openingBalance: true } }),
     db.invoice.aggregate({
       _sum: { dueAmount: true },
-      where: { customerId, docType: "sale", status: "completed" },
+      where: {
+        customerId,
+        docType: { in: ["sale", "sale_return"] },
+        status: "completed",
+      },
     }),
     db.cashTx.aggregate({
       _sum: { amount: true },

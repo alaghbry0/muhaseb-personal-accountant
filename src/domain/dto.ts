@@ -45,6 +45,8 @@ export interface InvoiceDetailDto {
   issuedAt: string
   createdAt: string
   customer: InvoiceCustomerDto | null
+  /** المورد (فواتير الشراء ومرتجعاتها) — أُضيف في 3-a */
+  supplier: { id: number; name: string; phone: string | null } | null
   salesRepName: string | null
   warehouseName: string
   cashboxName: string | null
@@ -76,6 +78,8 @@ export interface InvoiceListItemDto {
   issuedAt: string
   createdAt: string
   customerName: string | null
+  /** المورد (للمشتريات) — أُضيف في 3-a */
+  supplierName: string | null
   total: number
   dueAmount: number
   currencyCode: string
@@ -208,6 +212,7 @@ export const invoiceDetailInclude = {
     },
   },
   customer: true,
+  supplier: { select: { id: true, name: true, phone: true } },
   salesRep: { select: { name: true } },
   warehouse: { select: { name: true } },
   cashbox: { select: { name: true } },
@@ -241,6 +246,9 @@ export function toInvoiceDetailDto(
           phone: row.customer.phone,
           whatsapp: row.customer.whatsapp,
         }
+      : null,
+    supplier: row.supplier
+      ? { id: row.supplier.id, name: row.supplier.name, phone: row.supplier.phone ?? null }
       : null,
     salesRepName: row.salesRep?.name ?? null,
     warehouseName: row.warehouse.name,

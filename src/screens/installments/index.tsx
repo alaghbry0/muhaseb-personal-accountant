@@ -1,8 +1,9 @@
 import type { Component } from "react";
-import { makeStub } from "@/components/ds";
+import InstallmentsPlansScreen from "./installments-plans";
+import InstallmentsDueScreen from "./installments-due";
 
-/** شاشات وحدة الأقساط — تُنفَّذ في المرحلة 3-ب */
+/** شاشات وحدة الأقساط — Task 3-b (الخطط والتحصيل والمستحق اليوم/الأسبوع) */
 export const screens: Record<string, Component> = {
-  "installments-plans": makeStub("خطط الأقساط", "كل خطط التقسيط وحالتها"),
-  "installments-due": makeStub("الأقساط المستحقة", "مستحق اليوم/الأسبوع والتحصيل"),
+  "installments-plans": InstallmentsPlansScreen,
+  "installments-due": InstallmentsDueScreen,
 };

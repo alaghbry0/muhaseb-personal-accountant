@@ -4,8 +4,9 @@ import { db } from "@/lib/db";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/parties/reps?limit=50 — قائمة مناديب المبيعات للـ POS (قراءة فقط).
- * (أُنشئت من Task 2 لاختيار المندوب في شاشة البيع — Task 3-b يبني CRUD المناديب الكامل.)
+ * GET /api/parties/reps?limit=50 — قائمة المناديب.
+ * (أُنشئت من Task 2 لاختيار المندوب في POS — نفس الحقول الأساسية محفوظة،
+ * أضيف Task 3-b: areas + إحصاءات العمولات لقائمة المناديب.)
  */
 export async function GET(req: NextRequest) {
   try {
@@ -20,9 +21,34 @@ export async function GET(req: NextRequest) {
         phone: true,
         commissionType: true,
         commissionPercent: true,
+        areas: true,
       },
     });
-    return NextResponse.json({ reps });
+
+    // إحصاءات العمولات لكل مندوب
+    const withStats = await Promise.all(
+      reps.map(async (r) => {
+        const [dueAgg, paidAgg] = await Promise.all([
+          db.commission.aggregate({
+            _sum: { amount: true },
+            _count: true,
+            where: { salesRepId: r.id, status: "due" },
+          }),
+          db.commission.aggregate({
+            _sum: { amount: true },
+            where: { salesRepId: r.id, status: "paid" },
+          }),
+        ]);
+        return {
+          ...r,
+          commissionDue: dueAgg._sum.amount ?? 0,
+          commissionDueCount: dueAgg._count,
+          commissionPaid: paidAgg._sum.amount ?? 0,
+        };
+      })
+    );
+
+    return NextResponse.json({ reps: withStats });
   } catch (e) {
     console.error("GET /api/parties/reps error:", e);
     return NextResponse.json({ error: "تعذر تحميل المناديب" }, { status: 500 });

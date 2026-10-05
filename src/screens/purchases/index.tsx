@@ -1,9 +1,13 @@
 import type { Component } from "react";
-import { makeStub } from "@/components/ds";
+import PurchasesListScreen from "./purchases-list";
+import PurchasesNewScreen from "./purchases-new";
+import PurchasesDetailsScreen from "./purchases-details";
+import PurchasesReturnsScreen from "./purchases-returns";
 
-/** شاشات وحدة المشتريات — تُنفَّذ في المرحلة 3-أ */
+/** شاشات وحدة المشتريات والمرتجعات — Task 3-a */
 export const screens: Record<string, Component> = {
-  "purchases-list": makeStub("فواتير المشتريات", "قائمة فواتير الشراء والمرتجعات"),
-  "purchases-new": makeStub("فاتورة شراء جديدة", "إدخال توريد بضاعة وتحديث التكلفة المرجحة"),
-  "purchases-details": makeStub("تفاصيل فاتورة الشراء", "بنود التوريد وسداد المورد"),
+  "purchases-list": PurchasesListScreen,
+  "purchases-new": PurchasesNewScreen,
+  "purchases-details": PurchasesDetailsScreen,
+  "purchases-returns": PurchasesReturnsScreen,
 };

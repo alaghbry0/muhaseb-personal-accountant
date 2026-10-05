@@ -1,16 +1,25 @@
 import type { Component } from "react";
-import { makeStub } from "@/components/ds";
+import InventoryProductsScreen from "./inventory-products";
+import InventoryProductCardScreen from "./inventory-product-card";
+import InventoryProductFormScreen from "./inventory-product-form";
+import InventoryCategoriesScreen from "./inventory-categories";
+import InventoryUnitsScreen from "./inventory-units";
+import InventoryWarehousesScreen from "./inventory-warehouses";
+import InventoryStocktakeScreen from "./inventory-stocktake";
+import InventoryTransfersScreen from "./inventory-transfers";
+import InventoryAlertsScreen from "./inventory-alerts";
+import InventoryMovementsScreen from "./inventory-movements";
 
-/** شاشات وحدة المخزون — تُنفَّذ في المرحلة 3-أ */
+/** شاشات وحدة المخزون — Task 3-a */
 export const screens: Record<string, Component> = {
-  "inventory-products": makeStub("الأصناف", "قائمة الأصناف مع البحث والمسح والفلاتر"),
-  "inventory-product-card": makeStub("بطاقة الصنف", "الأسعار والأرصدة لكل مخزن وآخر الحركات"),
-  "inventory-product-form": makeStub("بيانات الصنف", "إضافة وتعديل صنف بأسعار كل عملة"),
-  "inventory-categories": makeStub("التصنيفات", "فئات الأصناف الشجرية"),
-  "inventory-units": makeStub("وحدات القياس", "الوحدات ومعاملات التحويل"),
-  "inventory-warehouses": makeStub("المخازن", "إدارة المخازن ومواقعها"),
-  "inventory-stocktake": makeStub("الجرد", "جرد فعلي ومراجعة الفروقات قبل الاعتماد"),
-  "inventory-transfers": makeStub("تحويل المخازن", "نقل الكميات بين المخازن"),
-  "inventory-alerts": makeStub("تنبيهات المخزون", "الأصناف تحت الحد الأدنى والراكدة"),
-  "inventory-movements": makeStub("سجل الحركات", "كل حركات الدخول والخروج والتسويات"),
+  "inventory-products": InventoryProductsScreen,
+  "inventory-product-card": InventoryProductCardScreen,
+  "inventory-product-form": InventoryProductFormScreen,
+  "inventory-categories": InventoryCategoriesScreen,
+  "inventory-units": InventoryUnitsScreen,
+  "inventory-warehouses": InventoryWarehousesScreen,
+  "inventory-stocktake": InventoryStocktakeScreen,
+  "inventory-transfers": InventoryTransfersScreen,
+  "inventory-alerts": InventoryAlertsScreen,
+  "inventory-movements": InventoryMovementsScreen,
 };

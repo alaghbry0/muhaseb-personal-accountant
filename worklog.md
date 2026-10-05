@@ -166,18 +166,37 @@ Work Log:
 ---
 Task ID: 3-a
 Agent: full-stack-developer
-Task: المخزون والمشتريات
+Task: المخزون والمشتريات والمرتجعات
 
 Work Log:
-- (سيُضاف من الوكيل)
+- (وكيل انقطع عند المهلة قبل كتابة سجله — وثّق المنسّق بعد تحقق فعلي بالـ curl)
+- src/domain/inventory.ts: savePurchaseInvoice (WAC §5.4-2) + saveReturnInvoice (SRN/PRN عكسي الأثر، تكلفة المرتجع من line_cost الأصلي) + saveStocktake/adjustStock + transferStock + saveProduct + generateEan13. ربط المرتجع بالأصل عبر notesInternal يبدأ بـ `original:INV-xxxx`.
+- API: توسيع POST/GET /api/invoices لكل الأنواع (شراء/مرتجعان)، /api/products (POST إنشاء بباركود تلقائي + أسعار عملات + رصيد افتتاحي)، /api/products/[id] (GET/PATCH + منع حذف ذي حركات)، /api/products/[id]/movements، /api/stock/{stocktake,transfer,alerts}، /api/{categories,units,warehouses} CRUD.
+- شاشات inventory كاملة (10): الأصناف، بطاقة صنف، نموذج صنف، فئات، وحدات، مخازن، جرد ذكي، تحويلات، تنبيهات (أصناف تنفذ + راكدة)، سجل الحركات. شاشات purchases (3): قائمة/جديدة/تفاصيل + مرتجع كامل/جزئي. تفعيل زر «مرتجع» في تفاصيل فاتورة البيع.
+- طباعة: فاتورة شراء/مرتجعات (قالب الإيصال) + ملصق باركود 58مم.
+- scripts/seed-purchases.ts نُفِّذ: 14 فاتورة شراء (PUR-2026-00014 آخرها) + 3 مرتجعات بيع (SRN) + مرتجع شراء.
+
+Stage Summary:
+- تحقق المنسّق: /api/stock/alerts يعمل (رصيد بالمخازن)، نقل مخزني 200 (transferId 313)، GET /api/products/1 سليم، فواتير شراء ومرتجعات موجودة بالبيانات. lint نظيف. أخطاء dev.log القديمة (DomainError/Prisma) عابرة أثناء تحرير الوكيل ولم تعد تظهر.
 
 ---
 Task ID: 3-b
 Agent: full-stack-developer
-Task: الأطراف والأقساط
+Task: الأطراف (عملاء/موردون/سندات/كشوف) والأقساط
 
 Work Log:
-- (سيُضاف من الوكيل)
+- (وكيل انقطع عند المهلة قبل كتابة سجله — وثّق المنسّق بعد تحقق فعلي بالـ curl)
+- src/domain/parties.ts: computeCustomerBalance/computeSupplierBalance + saveVoucher (سند قبض/صرف ذرّي → cash_tx) + getStatement (كشف حساب: رصيد افتتاحي + مدين/دائن + رصيد متحرك).
+- src/domain/installments.ts: generateSchedule (شهري/أسبوعي، القسط الأخير يمتص الكسر) + createPlanFromInvoice/createStandalonePlan + collectInstallment (كامل/جزئي → cash_tx + عمولة تحصيل للمندوب) + rescheduleLate + isLate.
+- API: /api/parties/customers(+[id]/statement) و suppliers كذلك (بالأرصدة والبحث)، /api/vouchers (سندات)، /api/installments/{plans,plans/[id],[id]/collect,plans/[id]/reschedule,due}, /api/parties/reps/[id].
+- شاشات parties (7): العملاء + بطاقة العميل (كشف حساب + واتساب + حد ائتمان بشريط تقدم)، الموردون + بطاقتهم، سندات القبض والصرف (لوحة + نموذج + طباعة سند بتوقيعات وتفقيط)، المناديب + بطاقة مندوب (إحصاءات وعمولات — الصرف لاحقاً 4-b).
+- شاشات installments (2): الخطط (تفاصيل خطة بجدول الأقساط وتحصيل وإعادة جدولة) + المستحق اليوم/الأسبوع (متأخر بالأحمر أولاً + تحصيل سريع + تذكير واتساب).
+- طباعة كشف حساب A4 + سند قبض/صرف حراري. src/lib/tafqeet.ts للتفقيط العربي.
+- scripts/seed-parties.ts نُفِّذ: سندات (قبض/صرف) + خطط أقساط (من فواتير آجلة ومستقلة) مع تحصيلات، وبعضها مستحق اليوم ومتأخر — /api/installments/due?scope=today يعيد بيانات فعلية.
+
+Stage Summary:
+- تحقق المنسّق: /api/vouchers و/api/installments/plans و/due?scope=today و/api/parties/suppliers كلها 200 ببيانات حقيقية. lint نظيف.
+- فجوة موثقة: تحذير حد الائتمان داخل POS عند البيع الآجل لم يُنفَّذ (على Task 5 إضافته — الفرصة موجودة في pos قبل الحفظ بمقارنة الرصيد+الإجمالي مع customer.creditLimit).
 
 ---
 Task ID: 4-a
