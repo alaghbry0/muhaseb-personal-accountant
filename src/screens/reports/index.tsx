@@ -1,16 +1,25 @@
 import type { Component } from "react";
-import { makeStub } from "@/components/ds";
+import ReportsGalleryScreen from "./reports-gallery";
+import ReportPlScreen from "./report-pl";
+import ReportSalesByScreen from "./report-sales-by";
+import ReportItemMovementScreen from "./report-item-movement";
+import ReportAgingScreen from "./report-aging";
+import ReportInstallmentsScreen from "./report-installments";
+import ReportExpensesScreen from "./report-expenses";
+import ReportCashboxesScreen from "./report-cashboxes";
+import ReportTaxScreen from "./report-tax";
+import ReportRepsScreen from "./report-reps";
 
-/** شاشات وحدة التقارير — تُنفَّذ في المرحلة 4-أ */
+/** شاشات وحدة التقارير — Task 4-a (FR-09) */
 export const screens: Record<string, Component> = {
-  "reports-gallery": makeStub("معرض التقارير", "كل تقارير النظام مجمّعة بمجموعات"),
-  "report-pl": makeStub("الأرباح والخسائر", "حركة الشركة — إيرادات وتكاليف ومصاريف"),
-  "report-sales-by": makeStub("المبيعات حسب", "العميل/الصنف/المندوب/اليوم/الفئة"),
-  "report-item-movement": makeStub("حركة صنف", "حركة صنف معين دخولاً وخروجاً"),
-  "report-aging": makeStub("أعمار الديون", "توزيع أرصدة العملاء حسب عمر الدين"),
-  "report-installments": makeStub("تقرير الأقساط", "أداء خطط التقسيط والتحصيل"),
-  "report-expenses": makeStub("تقرير المصروفات", "المصروفات حسب الفئة والفترة"),
-  "report-cashboxes": makeStub("تقرير الصناديق", "حركة وأرصدة كل صندوق"),
-  "report-tax": makeStub("تقرير الضريبة", "الضريبة المحصلة على المبيعات"),
-  "report-reps": makeStub("أداء المناديب", "مبيعات وعمولات كل مندوب"),
+  "reports-gallery": ReportsGalleryScreen,
+  "report-pl": ReportPlScreen,
+  "report-sales-by": ReportSalesByScreen,
+  "report-item-movement": ReportItemMovementScreen,
+  "report-aging": ReportAgingScreen,
+  "report-installments": ReportInstallmentsScreen,
+  "report-expenses": ReportExpensesScreen,
+  "report-cashboxes": ReportCashboxesScreen,
+  "report-tax": ReportTaxScreen,
+  "report-reps": ReportRepsScreen,
 };

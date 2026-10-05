@@ -1,11 +1,15 @@
 import type { Component } from "react";
-import { makeStub } from "@/components/ds";
+import CashBoxesScreen from "./cash-boxes";
+import CashTxNewScreen from "./cash-tx-new";
+import CashExpensesScreen from "./cash-expenses";
+import CashExpenseCategoriesScreen from "./cash-expense-categories";
+import CashShiftScreen from "./cash-shift";
 
-/** شاشات وحدة الخزينة — تُنفَّذ في المرحلة 4-أ */
+/** شاشات وحدة الخزينة — Task 4-a (FR-04) */
 export const screens: Record<string, Component> = {
-  "cash-boxes": makeStub("الخزينة", "الصناديق وأرصدتها الحية وحركاتها"),
-  "cash-tx-new": makeStub("حركة نقدية جديدة", "قبض/صرف/مصروف/تحويل بين الصناديق"),
-  "cash-expenses": makeStub("المصروفات", "مصروفات التشغيل حسب الفئة والفترة"),
-  "cash-expense-categories": makeStub("فئات المصروفات", "إدارة فئات المصروفات"),
-  "cash-shift": makeStub("وردية الصندوق", "فتح وإقفال الوردية وعدّ النقدية"),
+  "cash-boxes": CashBoxesScreen,
+  "cash-tx-new": CashTxNewScreen,
+  "cash-expenses": CashExpensesScreen,
+  "cash-expense-categories": CashExpenseCategoriesScreen,
+  "cash-shift": CashShiftScreen,
 };

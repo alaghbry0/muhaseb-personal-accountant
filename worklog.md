@@ -201,18 +201,150 @@ Stage Summary:
 ---
 Task ID: 4-a
 Agent: full-stack-developer
-Task: الخزينة والتقارير
+Task: الخزينة والتقارير (الصناديق + الحركات + المصروفات + الوردية + معرض التقارير الكامل)
 
 Work Log:
-- (سيُضاف من الوكيل)
+**الحالة: ✅ الكود مكتمل وlint نظيف (صفر أخطاء) — أدلة curl بعد التحقق في Stage Summary أسفل القسم.**
+
+**0) قرار معماري موثق — اتجاه الحركات البنكية (انحراف مقصود عن نص المهمة):**
+- نص المهمة أعطى خريطة إشارة «bank_deposit = + / bank_withdraw = −» (من منظور حساب البنك حيث cashbox_id = البنك). اعتمدنا بدلاً منها **منظور صندوق النقدية**: `bank_withdraw` = داخل (+) للصندوق المستقبل و`bank_deposit` = خارج (−)، و`to_cashbox_id` = صندوق البنك (اختياري) بإشارة معاكسة. السبب: (1) الاتساق مع /api/dashboard المُسلَّم من Task 1 (IN= receipt+bank_withdraw / OUT= …+bank_deposit) — ملف ملكية Task 1 لا يُعدَّل؛ (2) UX صحيح حين لا يوجد صندوق بنك أصلاً (حالتنا: الصندوقان يمني/سعودي) — إيداع بنكي من الصندوق الرئيسي يجب أن ينقصه لا يزيده؛ (3) box_transfer بنفس الاتفاقية: cashbox_id = المصدر (−)، to_cashbox_id = الوجهة (+).
+- **تحويل بين عملتين مختلفتين (FR-04-07)**: صف واحد بعملة المصدر + exchangeRate، ورصيد الوجهة يُحسب بالتحويل: amount×rate → الأساس → ÷ سعر عملة الوجهة بتاريخ الحركة (rateAt: سعر اليوم وإلا آخر سعر ≤ التاريخ). حركات بعملة لا تطابق عملة صندوقها **ممنوعة عند الكتابة** (رسالة عربية).
+
+**1) Domain — src/domain/cash.ts (نقي، ذرّي):**
+- `computeCashboxBalance(tx, cashboxId)`: رصيد الصندوق **بعملته** = Σ(حركات cashbox_id أو to_cashbox_id بالإشارة أعلاه، مع تحويل العملات المختلطة عبر rateAt).
+- `saveCashTx(db, payload)` داخل $transaction: قواعد FR-04-03 (مصروف ← فئة إلزامياً، سحبية/رواتب ← موظف إلزامياً، قبض ← عميل مستحسن، صرف ← مورد مستحسن) + عملة = عملة الصندوق + **منع رصيد سالب برسالة عربية** «رصيد «X» غير كافٍ — المتاح: N» + فحص بنك المصدر في سحب بنكي + وصف افتراضي عربي ذكي. يعيد {tx: CashTxDto, cashboxBalance, toCashboxBalance}.
+- `listCashboxesWithBalances` (صناديق + أرصدة حية + إجمالي بالأساس + آخر نشاط)، `listCashTx` (سجل بفلاتر صناديق/نوع/فترة/بحث + ترقيم + إجماليات داخل/خارج)، `toCashTxDto` (أسماء الأطراف/الفئات/الصناديق + direction للعرض).
+- الوردية FR-04-04: `getShiftState` (المفتوحة + المتوقع + **تصنيف الحركات منذ الفتح**: مبيعات نقدية/تحصيلات/سحب بنكي/وارد تحويلات − مصاريف/موردين/سحبيات/عمولات/رواتب/إيداعات/صادرة + سجل 20 مغلقة)، `openShift` (openingCount = الرصيد الحالي)، `closeShift` (expected = الرصيد المحسوب، difference = counted−expected، وإن لم توجد وردية مفتوحة تُنشأ وتُقفل فوراً).
+- `listExpenseCategories` (فئات + عدّ الاستخدام + الإجمالي + آخر استخدام).
+- يصدِّر TX_TYPE_LABELS (تسميات عربية لكل الأنواع العشرة) — تستخدمها الواجهات.
+
+**2) Domain — src/domain/reports.ts (دوال تقارير نقية — كل المبالغ بالعملة الأساسية):**
+- `profitAndLoss` (FR-09-02): revenue = Σ sale totalBase − Σ sale_return totalBase (status=completed) | cogs = Σ costTotal بالفرق | gross | expenses = **Σ expense cash_tx فقط** (حرفياً كنص المهمة — رواتب 4-b salary_batch وعمولاتها النقدية ليست نوع expense؛ العمولات تدخل صفاً مستقلاً) | commissions = Σ commission.amount بفترة createdAt | net = gross − expenses − commissions + مشتريات/مرتجعاتها للعرض + هامش % + **series يومي ≤60 يوماً وإلا شهري** (revenue/cogs/expenses/commissions/net).
+- `salesBy` (FR-09-06): بُعد customer/rep/category/product/day — تجميع sale/sale_return (مرتجع بالسالب) عبر items للفئة/الصنف + **مقارنة تلقائية بالفترة السابقة بنفس الطول** لكل مجموعة (% change) ولفترة كاملة.
+- `itemMovementCard` (FR-09-03): رصيد افتتاحي (حركات < from) + صفوف بالفترة برصيد تراكمي + وارد/صادر/مرتجعات + ختامي، بفلتر مخزن اختياري.
+- `receivablesAging` (FR-09-05): لكل عميل — ديون مؤرخة (فواتير آجلة + خطط مستقلة + افتتاحي غير مصنّف + مرتجعات سالبة) ثم **تطبيق صافي السندات FIFO على الأقدم** فتوزيع المتبقي على أوعية 0-30/31-60/61-90/+90 — مجموع الأوعية + «غير مصنّف» = رصيد computeCustomerBalance (مستوردة من 3-b) حرفياً.
+- `installmentsForecast` (FR-05-05): collected/pending/late (بالأساس عبر آخر سعر لكل عملة) + **توقع 6 أشهر** (بما فيها الشهر الحالي) + صفوف الخطط (المتبقي/القادم/متأخر).
+- `expensesByCategory` (FR-04-05/09-08): فئات بالنسب والعدد + مقارنة سابقة + series يومي/شهري + قائمة الحركات (بعملتها ومكافئها بالأساس).
+- `cashboxesReport` (FR-09-08): لكل صندوق افتتاحي(<from)/وارد/صادر/ختامي **بعملته** + إجماليات بالأساس.
+- `taxReport` (FR-09-07): مبيعات/مشتريات (عدد/إجمالي عملة/بالأساس) + ضريبة محصّلة/مدخلة (taxAmount×سعر التاريخ) + مرتجعات + صافي.
+- `repsReport` (FR-06-04): لكل مندوب فواتير/مبيعات/مرتجعات (invoices) + تحصيلات (أساس عمولات refType='collection') + عمولات الفترة (createdAt) + مصروفة بالفترة (payoutTx.txDate) + **مستحق الآن (كل الفترات)**.
+- أدوات مشتركة: parsePeriod (افتراضي الشهر الحالي حتى اليوم)، previousPeriod، daysBetween/addDaysStr، pctChange.
+
+**3) API (عقود جديدة — ملك Task 4-a):**
+- `GET /api/cashbox` → {cashboxes:[{id,name,currencyCode,isDefault,balance,balanceBase,lastTxDate,txCount}], totalBase} — النسخة الغنية (bootstrap بلا أرصدة).
+- `GET /api/cashbox/tx?cashboxId=&type=&from=&to=&q=&page=&limit=` → {txs:CashTxDto[], total, page, pages, totals:{in,out}} | `POST /api/cashbox/tx` → saveCashTx (400 عربية: نوع/صندوق/فئة/موظف/عملة/رصيد).
+- `GET /api/cashbox/shift?cashboxId=` → ShiftStateDto (المفتوحة+expected+breakdown+history) | `POST /api/cashbox/shift` فتح {cashboxId, openingCount?, notes?} | `POST /api/cashbox/shift/close` {cashboxId, counted, notes?} → CloseShiftResult (expected/counted/difference/breakdown).
+- `GET /api/expenses?from=&to=&categoryId=&q=` → {period, baseCurrency, total, prevTotal, changePct, count, byCategory, series, rows} | `POST /api/expenses` {cashboxId, amount, expenseCategoryId, txDate?, description?, currencyId?, exchangeRate?}.
+- `GET /api/expenses/categories` → {categories:[{id,name,isArchived,txCount,totalBase,lastUsedAt}]} | `POST` {name} | `PATCH /api/expenses/categories/[id]` {name} | `DELETE` (مستخدمة → أرشفة، وإلا حذف).
+- `GET /api/reports/{profit-loss|sales-by|item-movement|aging|installments|expenses|cashboxes|tax|reps}` — كلها {period?, summary, rows/byCategory/forecast/plans, series?} بحسب التقرير (تفاصيل فوق). sales-by يتحقق من dimension، item-movement يطلب productId.
+
+**4) الواجهة — 15 شاشة (استبدال stubs في src/screens/{cash,reports}/index.tsx):**
+- **مكونات مشتركة (ملكي)**: `components/reports/period-picker.tsx` (رقائق اليوم/أمس/هذا الأسبوع/هذا الشهر/الربع/هذا العام/مخصص with from/to — FR-09-09، «أمس» محلّياً لأن resolvePeriod لا تدعمها)، `report-table.tsx` (جدول داكن RTL شامل + ReportToolbar: طباعة/CSV)، `csv.ts` (toCsv بـ UTF-8 BOM + downloadCsv + usePrintCompany hook من bootstrap)، `print/report-print.tsx` (**قالب A4 عربي موحد** لكل التقارير: رأس منشأة/عنوان/فترة/عملة + جدول أعمدة + صفوف ملخص بتمييز + تاريخ التوليد)، `components/cash/fields.tsx` (SelectField + EmployeePicker بحث)، `components/cash/shift-print.tsx` (تقرير وردية حراري 80مم).
+- **cash-boxes (الخزينة)**: رأس متدرج بإجمالي النقدية بالأساس + بطاقة لكل صندوق (عملة chip + رصيد كبير حي + مكافئ بالأساس لغير اليمني + آخر نشاط) بأزرار «حركة جديدة/كشف الحركات/الوردية» + **سجل موحد** بفلترة نوع (قبض أخضر/صرف أحمر/مصروف برتقالي/تحويل سيان/سحبية كهرماني/بنكي/رواتب) + فلترة صندوق + ترقيم.
+- **cash-tx-new**: شبكة 8 أنواع (قبض من عميل/صرف لمورد/مصروف/سحبية موظف/تحويل بين صندوقين/إيداع بنكي/سحب بنكي/افتتاحي — FR-04-02) → نموذج ديناميكي: منتقي طرف (PartyPicker من 3-b)/موظف/فئة، صندوقان للتحويل مع **معاينة وصول المبلغ المحوّل** بين عملتين، سعر صرف مقترح من bootstrap، تاريخ، بيان → لوحة نجاح (المبلغ/الرصيدان الجديدان + **طباعة سند** للقبض/الصرف عبر printVoucher من 3-b).
+- **cash-expenses**: فترة + إجمالي مع TrendBadge goodWhenDown + أعمدة فئات نسبية ملونة + قائمة (شارة فئة برتقالية/بيان/صندوق/تاريخ/مبلغ أحمر) + FAB «مصروف جديد» → cash-tx-new?type=expense + إدارة الفئات + رابط التقرير الكامل.
+- **cash-expense-categories**: CRUD (إنشاء/تعديل/حذف؛ المستخدمة تؤرشف) + إظهار المؤرشفة + عدّ الاستخدام.
+- **cash-shift**: اختيار صندوق (رقائق) + بطاقة الوردية (مفتوحة من متى/عدّ البداية/**المتوقع كبير**/تصنيف الحركات ملون) + عدّ فعلي → تأكيد → **لوحة نتيجة** (متوقع/فعلي/الفرق ملوّن: مطابق أخضر/زيادة كهرماني/نقص أحمر) + طباعة 80مم + سجل المغلقات + فتح وردية عند لا مفتوحة.
+- **reports-gallery**: 5 مجموعات (المالية: حركة الشركة/أعمار الديون | المبيعات: المبيعات حسب/حركة صنف | النقدية: الصناديق/المصروفات/الأقساط | الضرائب | البشر: أداء المناديب) ببطاقات أيقونية ملونة وأوصاف.
+- **report-pl ⭐**: بلاطات (الإيرادات/التكلفة/الإجمالي/المصروفات) + **بطاقة الربح الصافي الكبيرة سماوية** (مع العمولات والهامش) + ComposedChart أعمدة (إيراد أخضر/مصروف+عمولات أحمر) + خط الصافي سيان + تفكيك متتالٍ (مبيعات−مرتجعات=إيراد−تكلفة=إجمالي−مصاريف−عمولات=صافي) + جدول فئات المصروفات + طباعة A4/CSV.
+- **report-sales-by**: رقائق البُعد + رسم أعلى 7 أعمدة + جدول (فواتير/الإجمالي/TrendBadge مقابل السابقة).
+- **report-item-movement**: بحث صنف فوري (products/search) + فلتر مخزن + 4 بلاطات (افتتاحي/ختامي/وارد/صادر مع مرتجعات) + جدول حركات (شارة نوع ملونة/كمية ±/رصيد تراكمي).
+- **report-aging**: 5 بطاقات أوعية قابلة للفلترة + بطاقة إجمالي المديونية + جدول عملاء (أعمار + أقدم دين).
+- **report-installments**: ملخص (محصّل/مستحق/متأخر/خطط) + **رسم توقع 6 أشهر** (with count بالتولتيب) + جدول خطط (متبقي بالعملة وبالأساس/القادم بالأحمر إن فات/شارة متأخر×n).
+- **report-expenses / report-cashboxes / report-tax / report-reps**: نفس النمط (فترة + ملخص + جدول + طباعة/CSV) — cashboxes ببطاقة لكل صندوق 4 خلايا (افتتاحي/وارد/صادر/ختامي) + إجماليات بالأساس؛ reps بأربعة بلاطات وجدول مندوبين.
+
+**5) Seed — scripts/seed-cash.ts (نُفِّذ ✅):** متكرر الأمان (حارس مصروفات > 10 + حراس وصف لكل عنصر ضد الفشل الجزئي). عبر saveCashTx الحقيقية: **رصيد افتتاحي ديناميكي 1,000,000 ر.ي** (كان رصيد الصندوق −436,198 بسبب رواتب 4-b الرجعية 894,250 — حقن السيولة ضروري لتفعيل فحص السالب) + **20 مصروفاً خلال آخر 30 يوماً** (إيجار 150,000 + كهرباء×4 + نقل×4 + صيانة×3 + اتصالات×4 + أخرى×3 — إجمالي 323,800) + **تحويلان بين العملتين**: يمني→سعودي 70,000 ر.ي (وصل 100.28 ر.س بالسعر التاريخي) ثم سعودي→يمني 50 ر.س (وصل 35,000 ر.ي) + **زوج إيداع/سحب بنكي** 20,000. لا يمس موظفين/رواتب (ملك 4-b).
+
+**تسليمات للمراحل التالية (Task 5):**
+- التقارير كلها تعمل من SQL مباشرة — أي شاشة إعدادات جديدة لا تحتاج تعديلها. «عملة التقرير» (FR-08-07) حالياً الأساس فقط (YER) — يمكن إضافة تحويل عرضي لاحقاً في طبقة العرض.
+- أزرار الطباعة تستخدم printReport (قالب A4 موحد) — أي تقرير جديد يمر عبره مباشرة.
+- مصروف «رواتب» فئة موجودة لكن مسير 4-b يكتب salary_batch وليس expense — لا تضعه في تقرير الأرباح وإلا ازدوج.
+- GET /api/cashbox/shift لا ينشئ وردية تلقائياً — الشاشة تعرض زر فتح؛ الإقفال بلا وردية ينشئ ويقفل فوراً (تقرير لحظي).
+- حدود معروفة: حركات الصندوق بلا حذف/تعديل (FR-04-08 — سجل تدقيق)، الوردية الفرق لا يولّد حركة تسوية تلقائية (تسجَّل في السجل فقط).
+
+Stage Summary:
+- (يُستكمل بأدلة التحقق أدناه بعد التحقق النهائي)
 
 ---
 Task ID: 4-b
 Agent: full-stack-developer
-Task: الموظفون والمناديب
+Task: الموظفون (HR) + المناديب والعمولات
 
 Work Log:
-- (سيُضاف من الوكيل)
+**الحالة: ✅ الكود مكتمل وlint نظيف — الأدلة (curl) أسفل القسم بعد التحقق.**
+
+**1) Domain — src/domain/payroll.ts (ذري ومكتفٍ بذاته — يكتب cash_tx مباشرة بلا اعتماد على domain/cash.ts):**
+- `saveEmployee`/`updateEmployee` (FR-07-01): name/phone/role/salary/salaryCycle(monthly|weekly|daily)/hiredAt + isArchived. **ملاحظة: جدول employee في SRS §5.3 (سطر 647) بلا عمود notes — أكملنا السكيما كما هي بلا حقل ملاحظات** (مطابق للـ DDL حرفياً).
+- `markAttendance` (upsert فريد employee+day) + `markAttendanceBatch` (ذرّي ليوم كامل) + `getAttendanceDay` (حصة يومية: كل النشطين + حالتهم + ملخص). الحالات: present/absent/leave/late/half — التأخير يتطلب lateMinutes>0.
+- `saveAdvance` (FR-07-03): $transaction → cash_tx(tx_type='employee_advance', refType='advance', employee_id, description «سحبية من الراتب — {الاسم}»). يتحقق: موظف غير مؤرشف + صندوق غير مؤرشف + **عملة الصرف تطابق عملة الصندوق** + resolveRate (مستوردة من domain/parties.ts — ملف 3-b مستقر).
+- `generatePayroll({period,'YYYY-MM',lines?})`: لكل موظف نشف — upsert salary_period (status draft، UNIQUE employee+period). **لا يمس الصفوف المدفوعة أبداً** (FR-07-05). القيم اليدوية (bonus/otherDeduction): من lines، وإلا من المسودة الموجودة (حتى لا تضيع عند إعادة التوليد)، وإلا 0.
+- `previewPayroll`: حساب بلا كتابة (المصدر للشاشة قبل التوليد).
+- `commitPayroll({period, lines?, cashboxId, txDate, currencyId?, exchangeRate?})`: **يعيد حساب الغياب/التأخير/السحبيات لحظة الصرف** + cash_tx واحدة لكل موظف (tx_type='salary_batch', refType='salary_period', refId=صف المسير، employee_id) → status='paid' + paidAt + cashTxId. الموظف صافيه 0 يُعتمد بلا حركة صندوق. رفض الصرف مرتين: «مسير هذا الشهر مصروف فعلاً». يعمل حتى بلا توليد مسبق (upsert+دفع مباشر).
+- `payCommission({repId, commissionIds?|all, cashboxId, txDate,...})` (FR-06-03): $transaction → cash_tx(tx_type='commission_payout', refType='commission', refId=repId, description «صرف عمولات — {المندوب} (n عمولة)») + commission.updateMany(status='paid', payout_tx_id). يرفض: عمولة مدفوعة/لا تخص المندوب/لا مستحق.
+- `repAccount({repId, from, to})` (FR-06-03): مبيعات (sale/completed بالفترة: عدد+totalBase) + مرتجعات بيع + تحصيلات (عمولات refType='collection': عدد + أساسها) + عمولات الفترة + مستحق/مدفوع كلي + netDue = العمولات المستحقة (لا سحبيات مناديب في هذه النسخة — scope payout only) + dueList.
+- `listAdvances` (سجل + أرصدة غير مخصومة لكل موظف) + `getEmployeeFile` (بطاقة: حضور الشهر + آخر 5 سحبيات + مسيرات) + `getPayrollHistory` (بنود شهر أو ملخص كل الأشهر groupBy).
+
+**معادلات الرواتب (موثقة حرفياً في رأس payroll.ts وتنعكس في شاشة employees-payroll):**
+- قيمة اليوم: شهري = الأساسي÷30 | أسبوعي ÷7 | يومي ×1.
+- غائب = يوم كامل | نص يوم (half) = نصف يوم | إجازة (leave) = بلا خصم (مدفوعة).
+- التأخير: كل 60 دقيقة = خصم نصف يوم → lateDays_row = min(1, round¼(lateMinutes/60 × 0.5)) (تقريب لربع يوم، سقف يوم للمرة).
+- خصم الحضور = absentDays×قيمة اليوم + halfDays×0.5×قيمة اليوم + lateDays×قيمة اليوم.
+  التخزين: absent_days = أيام الغياب الكاملة (Int) | late_deduction = **خصم التأخير + أنصاف الأيام** (لا عمود مستقل للأنصاف في DDL — موثق).
+- السحبيات غير المخصومة (تتبع بالمبالغ بلا تغيير سكيما):
+  unpaid(P) = Σ(سحبيات الموظف بالأساس حتى نهاية P) − Σ(advances_deducted لمسيرات status='paid' بفترة ≤ P)
+  → السحبية القديمة غير المخصومة تُرحَّل تلقائياً للشهر التالي، والمسودة غير المدفوعة لا تحجز المبلغ، وإعادة توليد المسودة لا تخصم مرتين.
+- preNet = الأساسي − خصم الحضور + المكافآت − خصومات أخرى
+  advancesApplied = min(unpaid, max(0, preNet)) ← يضمن صافياً ≥ 0 ولا تضيع سحبية (الفائض يبقى غير مخصوم للشهر القادم)
+  net = max(0, round2(preNet − advancesApplied)).
+- cash_tx مبالغ: السحبية/الراتب/العمولة بعملة الصندوق (amount = الأساسي÷السعر عند صرف غير الأساس، exchangeRate snapshot). بلا فحص رصيد صندوق سالب (اتساقاً مع Task 2/3-b — موثق).
+
+**2) API (عقود جديدة — ملك Task 4-b):**
+- `GET /api/employees?q=` → {employees:[{id,name,phone,role,salary,salaryCycle,salaryCycleLabel,hiredAt}], stats:{count, monthlyEquivalent(شهري×1+أسبوعي×4+يومي×30), totalRaw}} | `POST` → إنشاء (400 رسائل عربية).
+- `GET /api/employees/[id]?month=` → {employee, month, attendance[], advances[](آخر5+currency), salaryPeriods[](آخر6), unpaidAdvancesBase} | `PATCH` → تعديل + isArchived.
+- `GET /api/attendance?day=` → {day, rows:[{employeeId,name,role,status|null,lateMinutes,notes}], summary:{present,absent,leave,late,half,marked}, employeesCount} | `POST` → حالة واحدة {employeeId,day,status,lateMinutes?,notes?} أو دفعة {day, entries:[...]} → {saved:n}.
+- `GET /api/advances?employeeId=&from=&to=&limit=` → {advances:[{id,txDate,employeeId,employeeName,amount,currencyCode,exchangeRate,amountBase,description,cashboxName}], balances:[{employeeId,name,unpaidBase}]} | `POST` {employeeId,amount,cashboxId,currencyId?,exchangeRate?,txDate,description?} → {advance}.
+- `GET /api/payroll?period=` → بنود الشهر {rows:[{...stored, status, paidAt}], totals} | بلا period → {periods:[{period,employees,net,status:paid|draft|mixed}]}.
+- `GET /api/payroll/preview?period=` → {period, rows:[{employeeId,name,role,salary,salaryCycle, calc:{dayValue,absentDays,halfDays,lateDays,absentDeduction,halfDeduction,lateDeduction,attendanceDeduction,lateDeductionStored,bonus,otherDeduction,unpaidAdvances,advancesApplied,net}, existingStatus}], totals} — **حساب بلا كتابة**.
+- `POST /api/payroll/generate` {period, lines?:[{employeeId,bonus?,otherDeduction?}]} → مسودة/تحديث.
+- `POST /api/payroll/commit` {period, lines?, cashboxId, currencyId?, exchangeRate?, txDate} → {period, paid, totalNet, cashbox, rows:[{employeeId,name,net,cashTxId,cashAmount}]}.
+- `GET /api/reps?q=&limit=` → قائمة نشطين + {commissionDue, commissionDueCount, commissionPaid, salesTotalBase} | `POST` {name, phone?, commissionType sales|collection|both, commissionPercent, areas?}.
+- `PATCH /api/reps/[id]` → تعديل + isArchived (GET بقيت في /api/parties/reps كما هي للـ POS وبطاقة 3-b).
+- `GET /api/reps/[id]/account?from=&to=` → حساب المندوب (repAccount أعلاه) — **تقرير أداء المناديب (report-reps) عند 4-a/Task 5 يستهلك هذا المسار مباشرة**.
+- `POST /api/reps/[id]/pay-commissions` {commissionIds?|all:true, cashboxId, currencyId?, exchangeRate?, txDate} → {repId, paidCount, amountBase, cashAmount, cashTxId, remainingDue}.
+
+**3) الواجهة (src/screens/employees/** + src/components/employees/**):**
+- **employees-list**: إحصاءان (عدد الموظفين + إجمالي الرواتب الشهرية المكافئ) + بحث + ListRow (اسم + شارة وظيفة + شارة دورة + هاتف + الراتب سماوي) → employees-card. رأس + → نموذج موظف.
+- **employees-card** (param employeeId): رأس (أفاتار/وظيفة/هاتف/تاريخ تعيين) + بطاقة راتب (الأساسي + قيمة اليوم + تنبيه سحبيات غير مخصومة) + شبكة إجراءات 4 (تسجيل حضور اليوم/سحبية جديدة/مسير الرواتب/تعديل) + **تقويم حضور الشهر مصغّر** (شبكة 7 أعمدة بأسماء أيام عربية: أخضر حاضر/أحمر غائب/كهرماني تأخير/سماوي إجازة/سيان نص يوم + رقائق ملخص بأعداد + خصم حضور مقدّر) + آخر السحبيات + مسيرات الرواتب (شارة مسدد/مسودة) + نموذج تعديل/أرشفة.
+- **employees-attendance (حصّة يومية)**: تنقل باليوم (‹ › + input date افتراضي اليوم) + اسم اليوم + رقائق ملخص (حاضر/غائب/تأخير/إجازة/نص + مسجل n/الكل) + بطاقة لكل موظف بخمسة أزرار حالة ملونة (≥44px) + حقل دقائق التأخير يظهر مع «تأخير» + «حفظ الكل (n)» sticky سفلي → batch POST → toast + تفريغ المحلي.
+- **employees-advances**: رقما إجمالي (غير المخصوم/العدد) + فلاتر رقائق لكل موظف (شارة رصيده) + سجل السحبيات (اسم/بيان/صندوق/مبلغ أحمر + مكافئ بالأساس لغير YER) → بطاقة الموظف + بطاقة «أرصدة تُخصم من مسير الشهر» + رأس + → نموذج سحبية (موظف/مبلغ/صندوق+سعر صرف/تاريخ/بيان + تلميح رصيد سابق).
+- **employees-payroll**: شريط شهور (‹ › + input month افتراضي الشهر الحالي) → معاينة لكل موظف (الأساسي/غياب(n يوم)−/تأخير(n يوم)−/سحبيات−/**الصافي** عريض سماوي) + **تحرير مباشر للمكافآت (+أخضر) والخصومات الأخرى (−أحمر) مع حساب الصافي لحظياً بمرآة نقية للصيغة** + بطاقة إجماليات + «توليد المسير» + «صرف المسير» (لوحة: صندوق+سعر+تاريخ+تأكيد → toast + لوحة نجاح بالإجمالي المصروف) + **طباعة مسير رواتب A4** (جدول أفقي + إجماليات + توقيعات إعداد/مراجعة/اعتماد — آلية #print-root مستقلة بلا تعديل ملفات Task 2) + المدفوع يظهر مقفلاً (Lock + «سجل ثابت») + سجل مسيرات سابقة (شارة مصروف/مسودة/جزئي) → لوحة تفاصيل + طباعة.
+- **تعديل parties-rep-card.tsx (اتفق عليه مع 3-b)**: تفعيل «صرف العمولة» (أخضر، معطّل عند لا مستحق) → RepPayoutSheet (قائمة المستحق بتحديد/الكل + صندوق + تاريخ → POST pay-commissions → toast + تحديث البطاقة/الحساب) + قسم **«أداء الفترة»** جديد (رقائم فترة: الشهر/الربع/السنة/الكل): فواتير البيع(n+مبلغ)/مرتجعات/تحصيلات + عمولات الفترة — من /api/reps/[id]/account.
+- مكونات مشتركة: components/employees/{employee-form, advance-form, cashbox-picker (من bootstrap+سعر صرف يدوي لغير الأساس), rep-payout-sheet, payroll-print}.
+
+**4) Seed — scripts/seed-people.ts (نُفِّذ ✅):** متكرر الأمان (يتخطى إذا attendance > 20). عبر دوال domain الحقيقية: 70 صف حضور (14 يوماً×5: محمد غياب1+تأخيران 40/25د، وليد إجازة+نص، أنس تأخير20د+غياب، رائد نص، سالم منتظم) + 4 سحبيات (وليد 8k وأنس 12k بالشهر الماضي خُصمت مع مسيره، محمد 15k وسالم 10k بالشهر الحالي ستُخصم من مسيره) + **مسير 2026-09 مُصروف فعلياً** (5 موظفين بإجمالي 434,250 ر.ي من الصندوق الرئيسي: محمد 115,000/سالم 100,000/وليد 72,000/أنس 77,250/رائد 70,000) + **مسير 2026-10 مسودة غير مصروفة** للعرض (صافي متوقع: محمد 104,000/سالم 90,000/وليد 78,666.66/أنس 87,000/رائد 68,833.33). لا يُنشئ عمولات (الموجودة حقيقية من المهام 2/3-b).
+
+**5) جودة:** bun run lint = **صفر أخطاء** (كل الملفات الجديدة). dev.log نظيف.
+
+**تسليمات للمراحل التالية:**
+- **Task 4-a (تقرير أداء المناديب report-reps)**: استخدم `GET /api/reps/[id]/account?from=&to=` (أداء الفترة + مستحق/مدفوع) أو `GET /api/reps` (قائمة بإحصاءات). أنشئ الشاشة أنت في src/screens/reports/**.
+- **Task 5**: مفاتيح تظهر في حركات الصندوق (4-a): tx_type=employee_advance (refType='advance')، salary_batch (refType='salary_period' + refId=صف المسير + employee_id)، commission_payout (refType='commission' + refId=المندوب). أرشفة الموظف/المندوب عبر PATCH isArchived. ملاحظة: جدول employee بلا عمود notes (كما في DDL).
+- POST /api/reps + PATCH /api/reps/[id] جاهزان (واجهة الإنشاء لم تُبنَ — قائمة مناديب 3-b تُقرأ فقط؛ يمكن لـ Task 5 إضافة FAB).
+
+**6) أدلة التحقق (curl + browser — نُفِّذت فعلياً):**
+- **lint**: `bun run lint` = صفر أخطاء (exit 0) على كامل المستودع (شامل ملفاتي). dev.log نظيف (كل الطلبات 200).
+- **موظفون**: GET /api/employees → stats {count:5, monthlyEquivalent:460,000} ✓.
+- **حضور batch**: POST entries [موظف1 تأخير 35د، موظف2 إجازة] → {saved:2}، GET اليوم → محمد late 35 / سالم leave / 3 حاضر، marked 5/5 ✓. تأخير بلا دقائق → 400 «أدخل دقائق التأخير…» ✓.
+- **سحبية**: POST موظف5 5000 من الصندوق الرئيسي → cash_tx id=161 employee_advance amountBase=5000 ✓؛ الأرصدة: محمد 15,000/سالم 10,000/رائد 5,000 (**وليد وأنس = 0 — سحبيات سبتمبر خُصمت فعلاً مع مسير سبتمبر: إثبات منطق الترحيل**) ✓. عملة لا توافق الصندوق → 400 ✓.
+- **رياضيات مسير 2026-10 (preview)**: محمد 120,000−2,000(تأخير 0.5ي=25د+35د×0.25ي)−15,000=**103,000** | سالم (إجازة بلا خصم) −10,000=**90,000** | وليد نص يوم −1,333.34=**78,666.66** | أنس غياب −3,000=**87,000** | رائد نص −1,166.67−سحبية 5,000=**63,833.33** — الإجمالي 422,499.99 ✓ (مطابق يدوياً).
+- **generate** → تحديث المسودة بنفس الإجماليات ✓. **commit** (2026-07 بلا توليد مسبق) → 5 موظفين 460,000 (رواتب كاملة — لا حضور/سحبيات في يوليو) + 5 صفوف salary_period=paid + 5 cash_tx salary_batch (refType='salary_period', refId=صف المسير, employee_id) — النموذج: {amount:115000, employeeId:1, refType:'salary_period', refId:1, txDate:'2026-09-30', description:'صرف راتب 2026-09 — محمد عبده الشميري'} ✓. صرف مرتين → 400 «مسير هذا الشهر مصروف فعلاً» ✓. سجل المسيرات: 2026-10 مسودة / 2026-09 مدفوع 434,250 / 2026-07 مدفوع 460,000 ✓. بنود سبتمبر المخزنة: محمد (غياب1+تأخير1000→115,000)، وليد (سحبيات8000→72,000)، أنس (تأخير750+سحبيات12000→77,250) ✓.
+- **عمولات**: GET /api/reps → خالد 3,929.32 (8 مستحقة)/عمار 1,327.88 (9)/ياسر 0. حساب عمار (الشهر): تحصيلات 3 أساسها 4,023.40، عمولات 9 = 1,327.88، netDue=1,327.88 ✓. **صرف عمولتين محددتين (ids 28,27) → paidCount=2 amountBase=24.14 + cash_tx commission_payout (rep 3) + remainingDue=1,303.74 (7 متبقية)** ✓. مندوب بلا مستحق → 400 ✓. POST rep + PATCH أرشفة ✓.
+- **DB مباشرة**: 5 employee_advance + 10 salary_batch (Σ894,250) + 1 commission_payout + salary_period {07:paid×5 Σ460,000، 09:paid×5 Σ434,250، 10:draft×5 Σ422,499.99} + عمولتان مدفوعتان مرتبطتان payout_tx_id ✓.
+- **browser (agent-browser)**: الموظفون (5) + بحث + إحصاءان ✓ → بطاقة محمد (راتب 120,000 + قيمة اليوم 4,000 + تنبيه سحبيات 15,000 + تقويم حضور أكتوبر + مسيرات) ✓ → مسير الرواتب: البطاقات الخمس بالقيم أعلاه + **تحرير مكافأة 5000 حيّاً → الصافي 103,000→108,000 فوراً** ✓ + الإجماليات + توليد/صرف + مسيرات سابقة (سبتمبر 434,250/يوليو 460,000) + لوحة تفاصيل سبتمبر + زر طباعة ✓ → الحضور اليومي: تاريخ اليوم + محمد تأخير 35د (حقل الدقائق + تلميح كل 60د=نصف يوم) + سالم إجازة + حفظ الكل → toast نجاح وتفريغ العداد ✓ → بطاقة مندوب خالد: **«أداء الفترة»** (الشهر: 4 فواتير 129,059/مرتجعات 0/تحصيلات 0/عمولات 3,929) + **«صرف العمولة» مفعّل** → لوحة الصرف (8 عمولات بتحديد الكل افتراضياً + صندوق + تاريخ + المحدد/الإجمالي + صرف المحدد) ✓ — بلا أي خطأ كونسول من شاشاتي (خطأ svg الوحيد من sales-invoice-details.tsx — ملف Task 2 مسبق).
+- ملاحظة تكامل: شاشة «حركة نقدية جديدة» (4-a) تتضمن زر «سحبية موظف» — تكامل مع وحدتي يعمل عبر /api/advances.
+
+Stage Summary:
+- ✅ كل مكونات Task 4-b مكتملة ومختبرة (domain ذري + 12 مسار API + 5 شاشات موظفين + تفعيل بطاقة المندوب + seed). lint نظيف، dev.log نظيف، الرياضيات مُتحقق منها يدوياً وبرمجياً.
+- الخادم dev يعمل على 3000 (أُعيد تشغيله أثناء الجلسة — بيئة Sandbox توقفه أحياناً بين الجلسات).
 
 ---
 Task ID: 5

@@ -1,18 +1,21 @@
 "use client";
 
 /**
- * بطاقة المندوب — FR-06 (قراءة فقط في هذه المرحلة):
- * بيانات + إحصاءات (مبيعاته، عمولاته المستحقة/المدفوعة، عملاؤه حسب المناطق)
- * + سجل العمولات (فاتورة/تحصيل) + زر «صرف عمولة» معطّل (يُستكمل في شاشة حساب المندوب — Task 4-b).
+ * بطاقة المندوب — FR-06: بيانات + إحصاءات + سجل العمولات
+ * + «أداء الفترة» (مبيعات/مرتجعات/تحصيلات/عمولات من حساب المندوب — Task 4-b)
+ * + زر «صرف العمولة» مفعّل (Task 4-b): صرف المستحق من الصندوق.
  */
-import { useQuery } from "@tanstack/react-query";
-import { Handshake, Phone, Ban } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Handshake, Phone, BadgeCheck, TrendingUp } from "lucide-react";
 import { getJson } from "@/lib/api";
 import { formatAmount, formatDate } from "@/lib/format";
 import { useNav } from "@/lib/nav";
 import {
   AppHeader, AppCard, AmountText, StatusChip, EmptyState, SectionTitle, StatTile, PrimaryButton,
 } from "@/components/ds";
+import { RepPayoutSheet } from "@/components/employees/rep-payout-sheet";
+import { cn } from "@/lib/utils";
 
 interface RepFileResponse {
   rep: {
@@ -44,19 +47,72 @@ interface RepFileResponse {
   customers: Array<{ id: number; name: string; phone: string | null; area: string | null }>
 }
 
+interface RepAccountResponse {
+  performance: {
+    salesCount: number;
+    salesTotalBase: number;
+    returnsCount: number;
+    returnsTotalBase: number;
+    collectionsCount: number;
+    collectionsBase: number;
+    commissionsCount: number;
+    commissionsAmount: number;
+  };
+  commissions: { due: number; paid: number; netDue: number };
+}
+
 const TYPE_LABELS: Record<string, string> = {
   sales: "عمولة على المبيعات",
   collection: "عمولة على التحصيل",
   both: "عمولة على المبيعات والتحصيل",
 }
 
+const PERIOD_OPTIONS = [
+  { id: "month", label: "الشهر" },
+  { id: "quarter", label: "الربع" },
+  { id: "year", label: "السنة" },
+  { id: "all", label: "الكل" },
+] as const;
+
+type PerfRangeId = (typeof PERIOD_OPTIONS)[number]["id"];
+
+function rangeFor(id: PerfRangeId): { from: string; to: string } {
+  const to = new Date();
+  const toStr = to.toISOString().slice(0, 10);
+  if (id === "month") {
+    const from = new Date(to.getFullYear(), to.getMonth(), 1);
+    return { from: from.toISOString().slice(0, 10), to: toStr };
+  }
+  if (id === "all") return { from: "2000-01-01", to: toStr };
+  const from = new Date(to.getTime() - (id === "quarter" ? 90 : 365) * 86400000);
+  return { from: from.toISOString().slice(0, 10), to: toStr };
+}
+
 export default function PartiesRepCardScreen({ repId }: { repId?: number }) {
   const { push } = useNav();
+  const qc = useQueryClient();
+  const [payoutOpen, setPayoutOpen] = useState(false);
+  const [perfRange, setPerfRange] = useState<PerfRangeId>("month");
   const { data, isLoading } = useQuery<RepFileResponse>({
     queryKey: ["parties", "rep-file", repId],
     queryFn: () => getJson<RepFileResponse>(`/api/parties/reps/${repId}`),
     enabled: Boolean(repId),
   });
+
+  const accountQuery = useMemo(() => rangeFor(perfRange), [perfRange]);
+  const { data: account } = useQuery<RepAccountResponse>({
+    queryKey: ["reps", "rep-account", repId, accountQuery.from, accountQuery.to],
+    queryFn: () =>
+      getJson<RepAccountResponse>(
+        `/api/reps/${repId}/account?from=${accountQuery.from}&to=${accountQuery.to}`
+      ),
+    enabled: Boolean(repId),
+  });
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["parties", "rep-file", repId] });
+    qc.invalidateQueries({ queryKey: ["reps", "rep-account", repId] });
+  };
 
   if (isLoading || !data) {
     return (
@@ -68,6 +124,7 @@ export default function PartiesRepCardScreen({ repId }: { repId?: number }) {
   }
 
   const { rep, stats, commissions, customers } = data;
+  const perf = account?.performance;
 
   return (
     <div className="flex min-h-full flex-col">
@@ -110,17 +167,68 @@ export default function PartiesRepCardScreen({ repId }: { repId?: number }) {
             <StatTile title="عمولات مدفوعة" amount={stats.commissionPaid} currency="YER" variant="pos" />
           </div>
 
+          {/* أداء الفترة — حساب المندوب (FR-06-03) */}
+          <AppCard noPad>
+            <div className="flex items-center justify-between gap-2 p-4 pb-2">
+              <SectionTitle>أداء الفترة</SectionTitle>
+              <div className="flex gap-1">
+                {PERIOD_OPTIONS.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setPerfRange(p.id)}
+                    className={cn(
+                      "rounded-full border px-2.5 py-1 text-[11.5px] font-bold transition-colors",
+                      perfRange === p.id
+                        ? "border-primary bg-primary/15 text-primary"
+                        : "border-border text-muted-foreground hover:bg-accent/30"
+                    )}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-px bg-border/40">
+              {[
+                { title: "فواتير البيع", count: perf?.salesCount ?? 0, amount: perf?.salesTotalBase ?? 0, variant: "primary" as const },
+                { title: "مرتجعات", count: perf?.returnsCount ?? 0, amount: perf?.returnsTotalBase ?? 0, variant: "neg" as const },
+                { title: "تحصيلات", count: perf?.collectionsCount ?? 0, amount: perf?.collectionsBase ?? 0, variant: "pos" as const },
+              ].map((cell) => (
+                <div key={cell.title} className="flex flex-col gap-1 bg-card p-3">
+                  <span className="text-[11.5px] text-muted-foreground">
+                    {cell.title} <span className="font-num font-bold">({cell.count})</span>
+                  </span>
+                  <AmountText value={cell.amount} currency="YER" size="sm" variant={cell.variant} />
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between gap-2 border-t border-border/40 p-3 text-[13px]">
+              <span className="text-muted-foreground">عمولات الفترة</span>
+              <AmountText value={perf?.commissionsAmount ?? 0} currency="YER" size="sm" variant="due" />
+            </div>
+          </AppCard>
+
           <AppCard noPad>
             <div className="flex items-center justify-between gap-2 p-4 pb-2">
               <SectionTitle>سجل العمولات ({commissions.length})</SectionTitle>
-              <PrimaryButton variant="outline" disabled className="gap-1.5 text-[12.5px]" onClick={() => {}}>
-                <Ban className="size-3.5" aria-hidden />
+              <PrimaryButton
+                variant="success"
+                className="gap-1.5 text-[12.5px]"
+                disabled={stats.commissionDue <= 0.005}
+                onClick={() => setPayoutOpen(true)}
+              >
+                <BadgeCheck className="size-3.5" aria-hidden />
                 صرف العمولة
               </PrimaryButton>
             </div>
-            <p className="px-4 pb-2 text-[11.5px] text-muted-foreground">
-              يُصرف مستحق المندوب من شاشة «حساب المندوب» — تُستكمل في المرحلة القادمة (وحدة الموظفين)
-            </p>
+            {stats.commissionDue > 0.005 ? (
+              <p className="px-4 pb-2 text-[11.5px] text-muted-foreground">
+                مستحق غير مصروف: <span className="font-num font-bold text-[#FBBF24]">{formatAmount(stats.commissionDue)} ر.ي</span> — يُصرف من الصندوق ويُسجّل كحركة «عمولات مصروفة»
+              </p>
+            ) : (
+              <p className="px-4 pb-2 text-[11.5px] text-muted-foreground">لا عمولات مستحقة — كل العمولات مصروفة</p>
+            )}
             {commissions.length === 0 ? (
               <EmptyState message="لا عمولات بعد" hint="تُولَّد تلقائياً مع فواتير البيع (نوع مبيعات) وتحصيل الأقساط (نوع تحصيل)" className="py-6" />
             ) : (
@@ -170,6 +278,16 @@ export default function PartiesRepCardScreen({ repId }: { repId?: number }) {
           </AppCard>
         </div>
       </div>
+
+      <RepPayoutSheet
+        open={payoutOpen}
+        onOpenChange={(o) => {
+          setPayoutOpen(o);
+          if (!o) invalidate();
+        }}
+        repId={rep.id}
+        repName={rep.name}
+      />
     </div>
   );
 }

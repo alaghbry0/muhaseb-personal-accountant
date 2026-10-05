@@ -1,11 +1,15 @@
 import type { Component } from "react";
-import { makeStub } from "@/components/ds";
+import EmployeesListScreen from "./employees-list";
+import EmployeesCardScreen from "./employees-card";
+import EmployeesAttendanceScreen from "./employees-attendance";
+import EmployeesAdvancesScreen from "./employees-advances";
+import EmployeesPayrollScreen from "./employees-payroll";
 
-/** شاشات وحدة الموظفين — تُنفَّذ في المرحلة 4-ب */
+/** شاشات وحدة الموظفين — Task 4-b */
 export const screens: Record<string, Component> = {
-  "employees-list": makeStub("الموظفون", "قائمة الموظفين ورواتبهم"),
-  "employees-card": makeStub("بطاقة الموظف", "بيانات الموظف وسحبياته ورواتبه"),
-  "employees-attendance": makeStub("الحضور اليومي", "تسجيل حضور وانصراف الموظفين"),
-  "employees-advances": makeStub("السحبيات", "سحبيات الموظفين المرصودة من الراتب"),
-  "employees-payroll": makeStub("مسير الرواتب", "إعداد مسير الشهر واعتماده وصرفه"),
+  "employees-list": EmployeesListScreen,
+  "employees-card": EmployeesCardScreen,
+  "employees-attendance": EmployeesAttendanceScreen,
+  "employees-advances": EmployeesAdvancesScreen,
+  "employees-payroll": EmployeesPayrollScreen,
 };
