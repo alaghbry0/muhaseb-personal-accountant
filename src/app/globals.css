@@ -1,0 +1,210 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-tajawal);
+  --font-mono: var(--font-plex-arabic);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+  --color-pending: var(--pending);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* ══════════ DS-11: الثيم الفاتح (بديل) ══════════ */
+:root {
+  --radius: 0.75rem;
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #0891b2;
+  --primary-foreground: #ffffff;
+  --secondary: #e2e8f0;
+  --secondary-foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #e0f2fe;
+  --accent-foreground: #0f172a;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #0891b2;
+  --success: #059669;
+  --danger: #dc2626;
+  --warning: #d97706;
+  --pending: #64748b;
+  --chart-1: #06b6d4;
+  --chart-2: #10b981;
+  --chart-3: #f59e0b;
+  --chart-4: #f87171;
+  --chart-5: #94a3b8;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0f172a;
+  --sidebar-primary: #0891b2;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f5f9;
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #0891b2;
+  --gradient-cyan: linear-gradient(135deg, #06b6d4 0%, #0ea5e9 100%);
+}
+
+/* ══════════ DS-01..DS-10: الثيم الداكن الكحلي/السماوي (الافتراضي) ══════════ */
+.dark {
+  --background: #0f172a; /* DS-01 خلفية الشاشة */
+  --foreground: #f1f5f9; /* DS-09 نص أساسي */
+  --card: #1e293b; /* DS-02 بطاقات */
+  --card-foreground: #f1f5f9;
+  --popover: #1e293b;
+  --popover-foreground: #f1f5f9;
+  --primary: #22d3ee; /* DS-04 التمييزي الأساسي */
+  --primary-foreground: #0f172a;
+  --secondary: #334155;
+  --secondary-foreground: #f1f5f9;
+  --muted: #16213a;
+  --muted-foreground: #94a3b8; /* DS-10 نص ثانوي */
+  --accent: #164e63; /* لمسة سماوية داكنة للتحويم */
+  --accent-foreground: #ecfeff;
+  --destructive: #f87171; /* DS-07 */
+  --destructive-foreground: #1f0a0a;
+  --border: #334155; /* DS-03 حدود */
+  --input: #334155;
+  --ring: #22d3ee;
+  --success: #34d399; /* DS-06 قبض/ربح */
+  --danger: #f87171; /* DS-07 صرف/خطأ */
+  --warning: #fbbf24; /* DS-08 آجل/مستحق */
+  --pending: #64748b; /* معلّق */
+  --chart-1: #22d3ee;
+  --chart-2: #34d399;
+  --chart-3: #fbbf24;
+  --chart-4: #f87171;
+  --chart-5: #94a3b8;
+  --sidebar: #1e293b;
+  --sidebar-foreground: #f1f5f9;
+  --sidebar-primary: #22d3ee;
+  --sidebar-primary-foreground: #0f172a;
+  --sidebar-accent: #164e63;
+  --sidebar-accent-foreground: #ecfeff;
+  --sidebar-border: #334155;
+  --sidebar-ring: #22d3ee;
+  --gradient-cyan: linear-gradient(135deg, #06b6d4 0%, #0ea5e9 100%); /* DS-05 */
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  /* DS-12/DS-15: Tajawal أساسي — Body لا يقل عن 15px */
+  html {
+    font-size: 16px;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-tajawal), system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+}
+
+@layer utilities {
+  /* DS-13: خط المبالغ والأرقام — IBM Plex Sans Arabic */
+  .font-num {
+    font-family: var(--font-plex-arabic), var(--font-tajawal), system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+  }
+  /* دلالة الألوان المحاسبية */
+  .amount-pos {
+    color: #34d399;
+  }
+  .amount-neg {
+    color: #f87171;
+  }
+  .amount-due {
+    color: #fbbf24;
+  }
+  /* شريط تمرير نحيف */
+  .scrollbar-slim {
+    scrollbar-width: thin;
+    scrollbar-color: #334155 transparent;
+  }
+  .scrollbar-slim::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  .scrollbar-slim::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-slim::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 999px;
+  }
+  .scrollbar-slim::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+  /* منطقة الأمان السفلية (أجهزة iOS) */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  /* تدرّج الهيدر DS-05 */
+  .bg-gradient-cyan {
+    background-image: var(--gradient-cyan);
+  }
+}
+
+/* ══════════ الطباعة — قالب الإيصال الحراري (يمددّه الوكيل 2) ══════════ */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  @page {
+    margin: 0;
+  }
+}

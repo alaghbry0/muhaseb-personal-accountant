@@ -1,0 +1,694 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// «المُحاسِب الشخصي» — مخطط قاعدة البيانات الكامل (SRS §5.3)
+// 34 جدولاً — SQLite عبر Prisma. NUMERIC → Float (تقريب دقيق عبر src/domain/money.ts)
+// التواريخ المحاسبية (issuedAt/movedAt/txDate/dueDate/day/...) نصية YYYY-MM-DD
+// وcreatedAt/updatedAt من نوع DateTime. لا حذف فيزيائي — isArchived (Soft-Delete).
+// ═══════════════════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ════════════════════════ المراجع الأساسية ════════════════════════
+
+model Company {
+  id            Int      @id @default(autoincrement())
+  name          String
+  phone         String?
+  whatsapp      String?
+  address       String?
+  logoPath      String?  @map("logo_path")
+  currencyId    Int      @map("currency_id")
+  taxNumber     String?  @map("tax_number")
+  taxRate       Float    @default(0) @map("tax_rate")
+  invoicePrefix String?  @default("INV") @map("invoice_prefix")
+  footerText    String?  @map("footer_text")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  currency Currency @relation(fields: [currencyId], references: [id])
+
+  @@map("company")
+}
+
+model Currency {
+  id        Int     @id @default(autoincrement())
+  code      String  @unique // YER, SAR, USD, AED
+  name      String
+  symbolSvg String? @map("symbol_svg")
+  isBase    Boolean @default(false) @map("is_base")
+  decimals  Int     @default(2)
+  isActive  Boolean @default(true) @map("is_active")
+
+  companies        Company[]
+  cashboxes        Cashbox[]
+  exchangeRates    ExchangeRate[]
+  productPrices    ProductPrice[]
+  invoices         Invoice[]
+  cashTxs          CashTx[]
+  quotations       Quotation[]
+  installmentPlans InstallmentPlan[]
+
+  @@map("currency")
+}
+
+model ExchangeRate {
+  id         Int      @id @default(autoincrement())
+  currencyId Int      @map("currency_id")
+  rateDate   String   @map("rate_date") // YYYY-MM-DD
+  rate       Float // كم وحدة أساسية لوحدة واحدة
+  source     String?  @default("manual")
+  createdAt  DateTime @default(now()) @map("created_at")
+  createdBy  Int?     @map("created_by")
+
+  currency Currency @relation(fields: [currencyId], references: [id])
+
+  @@unique([currencyId, rateDate])
+  @@map("exchange_rate")
+}
+
+model Category {
+  id        Int     @id @default(autoincrement())
+  name      String
+  parentId  Int?    @map("parent_id")
+  sortOrder Int     @default(0) @map("sort_order")
+  isArchived Boolean @default(false) @map("is_archived")
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  @@map("category")
+}
+
+model Unit {
+  id         Int     @id @default(autoincrement())
+  name       String
+  baseUnitId Int?    @map("base_unit_id")
+  factor     Float   @default(1) // كرتون=24 قطعة => base=قطعة، factor=24
+  isArchived Boolean @default(false) @map("is_archived")
+
+  baseUnit     Unit?         @relation("UnitTree", fields: [baseUnitId], references: [id])
+  children     Unit[]        @relation("UnitTree")
+  products     Product[]
+  invoiceItems InvoiceItem[]
+
+  @@map("unit")
+}
+
+model Warehouse {
+  id         Int     @id @default(autoincrement())
+  name       String
+  location   String?
+  isDefault  Boolean @default(false) @map("is_default")
+  isArchived Boolean @default(false) @map("is_archived")
+
+  stockLevels   StockLevel[]
+  stockMovements StockMovement[]
+  batches       Batch[]
+  stocktakes    Stocktake[]
+  invoices      Invoice[]
+
+  @@map("warehouse")
+}
+
+model Cashbox {
+  id         Int     @id @default(autoincrement())
+  name       String
+  currencyId Int     @map("currency_id")
+  isDefault  Boolean @default(false) @map("is_default")
+  isArchived Boolean @default(false) @map("is_archived")
+
+  currency    Currency  @relation(fields: [currencyId], references: [id])
+  cashTxs     CashTx[]  @relation("CashTxCashbox")
+  transfersOut CashTx[] @relation("CashTxToCashbox")
+  shifts      Shift[]
+  invoices    Invoice[]
+  users       AppUser[]
+
+  @@map("cashbox")
+}
+
+model ExpenseCategory {
+  id        Int     @id @default(autoincrement())
+  name      String
+  isArchived Boolean @default(false) @map("is_archived")
+
+  cashTxs CashTx[]
+
+  @@map("expense_category")
+}
+
+// ════════════════════════ الأصناف والمخزون ════════════════════════
+
+model Product {
+  id           Int      @id @default(autoincrement())
+  name         String
+  barcode      String?  @unique
+  categoryId   Int?     @map("category_id")
+  unitId       Int?     @map("unit_id")
+  costPrice    Float    @default(0) @map("cost_price") // بالعملة الأساسية (WAC)
+  minStock     Float    @default(0) @map("min_stock") // بوحدة الأساس
+  trackBatches Boolean  @default(false) @map("track_batches")
+  trackSerials Boolean  @default(false) @map("track_serials")
+  imagePath    String?  @map("image_path")
+  notes        String?
+  isArchived   Boolean  @default(false) @map("is_archived")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdBy    Int?     @map("created_by")
+
+  category      Category?       @relation(fields: [categoryId], references: [id])
+  unit          Unit?           @relation(fields: [unitId], references: [id])
+  prices        ProductPrice[]
+  stockLevels   StockLevel[]
+  stockMovements StockMovement[]
+  batches       Batch[]
+  invoiceItems  InvoiceItem[]
+  quotationItems QuotationItem[]
+  stocktakeLines StocktakeLine[]
+
+  @@index([name])
+  @@map("product")
+}
+
+model ProductPrice {
+  id            Int      @id @default(autoincrement())
+  productId     Int      @map("product_id")
+  currencyId    Int      @map("currency_id")
+  price         Float
+  marginPercent Float    @default(0) @map("margin_percent") // هامش تحويل سعر الصرف
+  updatedAt     DateTime? @updatedAt @map("updated_at")
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  currency Currency @relation(fields: [currencyId], references: [id])
+
+  @@unique([productId, currencyId])
+  @@map("product_price")
+}
+
+model StockLevel {
+  id          Int   @id @default(autoincrement())
+  productId   Int   @map("product_id")
+  warehouseId Int   @map("warehouse_id")
+  qty         Float @default(0) // بوحدة الأساس
+
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@unique([productId, warehouseId])
+  @@map("stock_level")
+}
+
+model StockMovement {
+  id           Int      @id @default(autoincrement())
+  productId    Int      @map("product_id")
+  warehouseId  Int      @map("warehouse_id")
+  movementType String   @map("movement_type") // purchase|sale|sale_return|purchase_return|adjustment|transfer_in|transfer_out|opening
+  qty          Float // موجب/سالب حسب النوع
+  unitCost     Float?   @map("unit_cost")
+  refType      String?  @map("ref_type") // invoice|quotation|transfer|adjustment|stocktake
+  refId        Int?     @map("ref_id")
+  movedAt      String   @map("moved_at") // YYYY-MM-DD
+  notes        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  createdBy    Int?     @map("created_by")
+
+  product   Product   @relation(fields: [productId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@index([productId, movedAt])
+  @@index([warehouseId, movedAt])
+  @@index([refType, refId])
+  @@map("stock_movement")
+}
+
+model Batch {
+  id           Int     @id @default(autoincrement())
+  productId    Int     @map("product_id")
+  warehouseId  Int     @map("warehouse_id")
+  batchNumber  String? @map("batch_number")
+  serialNumber String? @unique @map("serial_number")
+  expiryDate   String? @map("expiry_date")
+  qty          Float   @default(0)
+  isArchived   Boolean @default(false) @map("is_archived")
+
+  product      Product       @relation(fields: [productId], references: [id])
+  warehouse    Warehouse     @relation(fields: [warehouseId], references: [id])
+  invoiceItems InvoiceItem[]
+
+  @@index([productId])
+  @@map("batch")
+}
+
+model Stocktake {
+  id          Int      @id @default(autoincrement())
+  warehouseId Int      @map("warehouse_id")
+  countedAt   String   @map("counted_at") // YYYY-MM-DD
+  totalDiff   Float    @default(0) @map("total_diff")
+  status      String?  @default("completed")
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  createdBy   Int?     @map("created_by")
+
+  warehouse Warehouse       @relation(fields: [warehouseId], references: [id])
+  lines     StocktakeLine[]
+
+  @@map("stocktake")
+}
+
+model StocktakeLine {
+  id          Int   @id @default(autoincrement())
+  stocktakeId Int   @map("stocktake_id")
+  productId   Int   @map("product_id")
+  bookQty     Float @map("book_qty")
+  countedQty  Float @map("counted_qty")
+  diffQty     Float @map("diff_qty")
+
+  stocktake Stocktake @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@map("stocktake_line")
+}
+
+// ════════════════════════ الأطراف ════════════════════════
+
+model Customer {
+  id              Int      @id @default(autoincrement())
+  name            String
+  phone           String?
+  whatsapp        String?
+  address         String?
+  area            String?
+  creditLimit     Float    @default(0) @map("credit_limit")
+  openingBalance  Float    @default(0) @map("opening_balance") // موجب=مدين
+  notes           String?
+  imagePath       String?  @map("image_path")
+  isArchived      Boolean  @default(false) @map("is_archived")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdBy       Int?     @map("created_by")
+
+  invoices         Invoice[]
+  installmentPlans InstallmentPlan[]
+  cashTxs          CashTx[]
+  quotations       Quotation[]
+
+  @@index([name])
+  @@index([phone])
+  @@map("customer")
+}
+
+model Supplier {
+  id             Int      @id @default(autoincrement())
+  name           String
+  phone          String?
+  address        String?
+  openingBalance Float    @default(0) @map("opening_balance") // موجب=دائن (مستحق له)
+  notes          String?
+  isArchived     Boolean  @default(false) @map("is_archived")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdBy      Int?     @map("created_by")
+
+  invoices Invoice[]
+  cashTxs  CashTx[]
+
+  @@map("supplier")
+}
+
+model SalesRep {
+  id                Int      @id @default(autoincrement())
+  name              String
+  phone             String?
+  commissionType    String   @default("sales") @map("commission_type") // sales|collection|both
+  commissionPercent Float    @default(0) @map("commission_percent")
+  areas             String? // مناطق مفصولة بفواصل
+  isArchived        Boolean  @default(false) @map("is_archived")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  invoices    Invoice[]
+  commissions Commission[]
+
+  @@map("sales_rep")
+}
+
+model Employee {
+  id          Int      @id @default(autoincrement())
+  name        String
+  phone       String?
+  role        String? // الوظيفة: بائع/كاشير/عامل مخزن/سائق/حارس...
+  salary      Float    @default(0)
+  salaryCycle String   @default("monthly") @map("salary_cycle") // monthly|weekly|daily
+  hiredAt     String?  @map("hired_at") // YYYY-MM-DD
+  isArchived  Boolean  @default(false) @map("is_archived")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdBy   Int?     @map("created_by")
+
+  attendance   Attendance[]
+  salaryPeriods SalaryPeriod[]
+  cashTxs      CashTx[]
+
+  @@map("employee")
+}
+
+model Attendance {
+  id           Int     @id @default(autoincrement())
+  employeeId   Int     @map("employee_id")
+  day          String // YYYY-MM-DD
+  status       String // present|absent|leave|late|half
+  lateMinutes  Int     @default(0) @map("late_minutes")
+  notes        String?
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, day])
+  @@map("attendance")
+}
+
+// ════════════════════════ الفوترة ════════════════════════
+
+model Invoice {
+  id             Int      @id @default(autoincrement())
+  invoiceNo      String   @unique @map("invoice_no") // INV-2026-00001
+  docType        String   @map("doc_type") // sale|purchase|sale_return|purchase_return
+  payStatus      String   @map("pay_status") // cash|credit|mixed|held
+  status         String   @default("completed") // draft|completed|converted|void
+  issuedAt       String   @map("issued_at") // YYYY-MM-DD (تاريخ المستخدم)
+  customerId     Int?     @map("customer_id")
+  supplierId     Int?     @map("supplier_id")
+  salesRepId     Int?     @map("sales_rep_id")
+  cashboxId      Int?     @map("cashbox_id")
+  warehouseId    Int      @map("warehouse_id")
+  currencyId     Int      @map("currency_id")
+  exchangeRate   Float    @default(1) @map("exchange_rate")
+  subtotal       Float    @default(0)
+  discountAmount Float    @default(0) @map("discount_amount") // خصم الإجمالي
+  taxRate        Float    @default(0) @map("tax_rate")
+  taxAmount      Float    @default(0) @map("tax_amount")
+  total          Float // بعملة الفاتورة
+  totalBase      Float    @default(0) @map("total_base") // محوّل للعملة الأساسية
+  paidAmount     Float    @default(0) @map("paid_amount")
+  dueAmount      Float    @default(0) @map("due_amount")
+  costTotal      Float    @default(0) @map("cost_total") // تكلفة البنود (للربح)
+  notesInternal  String?  @map("notes_internal")
+  notesPrinted   String?  @map("notes_printed")
+  quotationId    Int?     @map("quotation_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdBy      Int?     @map("created_by")
+
+  customer             Customer?         @relation(fields: [customerId], references: [id])
+  supplier             Supplier?         @relation(fields: [supplierId], references: [id])
+  salesRep             SalesRep?         @relation(fields: [salesRepId], references: [id])
+  cashbox              Cashbox?          @relation(fields: [cashboxId], references: [id])
+  warehouse            Warehouse         @relation(fields: [warehouseId], references: [id])
+  currency             Currency          @relation(fields: [currencyId], references: [id])
+  quotation            Quotation?        @relation("InvoiceFromQuotation", fields: [quotationId], references: [id])
+  convertedQuotations  Quotation[]       @relation("QuotationConvertedToInvoice")
+  installmentPlans     InstallmentPlan[]
+  items                InvoiceItem[]
+
+  @@index([docType, issuedAt])
+  @@index([customerId, issuedAt])
+  @@index([supplierId, issuedAt])
+  @@index([salesRepId, issuedAt])
+  @@map("invoice")
+}
+
+model InvoiceItem {
+  id              Int     @id @default(autoincrement())
+  invoiceId       Int     @map("invoice_id")
+  productId       Int     @map("product_id")
+  qty             Float
+  unitId          Int?    @map("unit_id") // وحدة البيع الفعلية
+  unitFactor      Float   @default(1) @map("unit_factor")
+  unitPrice       Float   @map("unit_price") // بعملة الفاتورة
+  discountPercent Float   @default(0) @map("discount_percent")
+  discountAmount  Float   @default(0) @map("discount_amount")
+  taxPercent      Float   @default(0) @map("tax_percent")
+  lineTotal       Float   @map("line_total") // بعد الخصم والضريبة
+  lineCost        Float   @default(0) @map("line_cost") // التكلفة لحظة البيع
+  batchId         Int?    @map("batch_id")
+  serialNumbers   String? @map("serial_numbers") // JSON: ["SN1","SN2"]
+  notes           String?
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+  unit    Unit?   @relation(fields: [unitId], references: [id])
+  batch   Batch?  @relation(fields: [batchId], references: [id])
+
+  @@index([invoiceId])
+  @@index([productId])
+  @@map("invoice_item")
+}
+
+model Quotation {
+  id             Int      @id @default(autoincrement())
+  quoteNo        String   @unique @map("quote_no")
+  issuedAt       String   @map("issued_at") // YYYY-MM-DD
+  customerId     Int?     @map("customer_id")
+  currencyId     Int      @map("currency_id")
+  exchangeRate   Float    @default(1) @map("exchange_rate")
+  subtotal       Float    @default(0)
+  discountAmount Float    @default(0) @map("discount_amount")
+  taxRate        Float    @default(0) @map("tax_rate")
+  taxAmount      Float    @default(0) @map("tax_amount")
+  total          Float    @default(0)
+  validUntil     String?  @map("valid_until")
+  notes          String?
+  status         String   @default("open") // open|accepted|rejected|converted|expired
+  invoiceId      Int?     @map("invoice_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdBy      Int?     @map("created_by")
+
+  customer       Customer?       @relation(fields: [customerId], references: [id])
+  currency       Currency        @relation(fields: [currencyId], references: [id])
+  invoice        Invoice?        @relation("QuotationConvertedToInvoice", fields: [invoiceId], references: [id])
+  sourceInvoices Invoice[]       @relation("InvoiceFromQuotation")
+  items          QuotationItem[]
+
+  @@map("quotation")
+}
+
+model QuotationItem {
+  id              Int   @id @default(autoincrement())
+  quotationId     Int   @map("quotation_id")
+  productId       Int   @map("product_id")
+  qty             Float
+  unitPrice       Float @map("unit_price")
+  discountPercent Float @default(0) @map("discount_percent")
+  lineTotal       Float @map("line_total")
+
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@map("quotation_item")
+}
+
+// ════════════════════════ النقدية ════════════════════════
+
+model CashTx {
+  id                Int      @id @default(autoincrement())
+  txType            String   @map("tx_type") // receipt|payment|expense|employee_advance|commission_payout|box_transfer|bank_deposit|bank_withdraw|salary_batch|opening
+  cashboxId         Int      @map("cashbox_id")
+  toCashboxId       Int?     @map("to_cashbox_id") // للتحويل بين الصناديق
+  currencyId        Int      @map("currency_id")
+  amount            Float // موجب دائماً (الاتجاه من tx_type)
+  exchangeRate      Float    @default(1) @map("exchange_rate")
+  txDate            String   @map("tx_date") // YYYY-MM-DD
+  refType           String?  @map("ref_type") // invoice|installment|stocktake|transfer|salary_period
+  refId             Int?     @map("ref_id")
+  expenseCategoryId Int?     @map("expense_category_id")
+  employeeId        Int?     @map("employee_id")
+  customerId        Int?     @map("customer_id")
+  supplierId        Int?     @map("supplier_id")
+  description       String?
+  createdAt         DateTime @default(now()) @map("created_at")
+  createdBy         Int?     @map("created_by")
+
+  cashbox          Cashbox          @relation("CashTxCashbox", fields: [cashboxId], references: [id])
+  toCashbox        Cashbox?         @relation("CashTxToCashbox", fields: [toCashboxId], references: [id])
+  currency         Currency         @relation(fields: [currencyId], references: [id])
+  expenseCategory  ExpenseCategory? @relation(fields: [expenseCategoryId], references: [id])
+  employee         Employee?        @relation(fields: [employeeId], references: [id])
+  customer         Customer?        @relation(fields: [customerId], references: [id])
+  supplier         Supplier?        @relation(fields: [supplierId], references: [id])
+  installments     Installment[]
+  commissions      Commission[]
+  salaryPeriods    SalaryPeriod[]
+
+  @@index([txDate])
+  @@index([cashboxId, txDate])
+  @@index([refType, refId])
+  @@map("cash_tx")
+}
+
+model Shift {
+  id           Int     @id @default(autoincrement())
+  cashboxId    Int     @map("cashbox_id")
+  userId       Int?    @map("user_id")
+  openedAt     String  @map("opened_at") // ISO-8601
+  closedAt     String? @map("closed_at")
+  openingCount Float?  @map("opening_count")
+  expected     Float?
+  counted      Float?
+  difference   Float?
+  notes        String?
+
+  cashbox Cashbox @relation(fields: [cashboxId], references: [id])
+  user    AppUser? @relation(fields: [userId], references: [id])
+
+  @@map("shift")
+}
+
+// ════════════════════════ التقسيط ════════════════════════
+
+model InstallmentPlan {
+  id          Int      @id @default(autoincrement())
+  customerId  Int      @map("customer_id")
+  invoiceId   Int?     @map("invoice_id")
+  currencyId  Int      @map("currency_id")
+  principal   Float // المبلغ المقسّط
+  downPayment Float    @default(0) @map("down_payment")
+  months      Int
+  cycle       String   @default("monthly") // monthly|weekly
+  firstDue    String   @map("first_due") // YYYY-MM-DD
+  totalPaid   Float    @default(0) @map("total_paid")
+  status      String   @default("active") // active|completed|defaulted|cancelled
+  createdAt   DateTime @default(now()) @map("created_at")
+  createdBy   Int?     @map("created_by")
+
+  customer     Customer      @relation(fields: [customerId], references: [id])
+  invoice      Invoice?      @relation(fields: [invoiceId], references: [id])
+  currency     Currency      @relation(fields: [currencyId], references: [id])
+  installments Installment[]
+
+  @@map("installment_plan")
+}
+
+model Installment {
+  id        Int     @id @default(autoincrement())
+  planId    Int     @map("plan_id")
+  seq       Int // رقم القسط
+  dueDate   String  @map("due_date") // YYYY-MM-DD
+  amount    Float
+  paidAmount Float  @default(0) @map("paid_amount")
+  status    String  @default("pending") // pending|partial|paid|late|rescheduled
+  paidAt    String? @map("paid_at")
+  cashTxId  Int?    @map("cash_tx_id")
+
+  plan   InstallmentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  cashTx CashTx?         @relation(fields: [cashTxId], references: [id])
+
+  @@unique([planId, seq])
+  @@index([dueDate, status])
+  @@map("installment")
+}
+
+// ════════════════════════ العمولات والرواتب ════════════════════════
+
+model Commission {
+  id          Int      @id @default(autoincrement())
+  salesRepId  Int      @map("sales_rep_id")
+  refType     String   @map("ref_type") // invoice|collection
+  refId       Int      @map("ref_id")
+  baseAmount  Float    @map("base_amount")
+  percent     Float
+  amount      Float
+  status      String   @default("due") // due|paid
+  payoutTxId  Int?     @map("payout_tx_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  salesRep  SalesRep @relation(fields: [salesRepId], references: [id])
+  payoutTx  CashTx?  @relation(fields: [payoutTxId], references: [id])
+
+  @@map("commission")
+}
+
+model SalaryPeriod {
+  id               Int      @id @default(autoincrement())
+  employeeId       Int      @map("employee_id")
+  period           String // 2026-10
+  baseSalary       Float    @map("base_salary")
+  absentDays       Int      @default(0) @map("absent_days")
+  lateDeduction    Float    @default(0) @map("late_deduction")
+  bonus            Float    @default(0)
+  otherDeduction   Float    @default(0) @map("other_deduction")
+  advancesDeducted Float    @default(0) @map("advances_deducted")
+  netSalary        Float    @map("net_salary")
+  status           String   @default("draft") // draft|paid
+  paidAt           String?  @map("paid_at")
+  cashTxId         Int?     @map("cash_tx_id")
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+  cashTx   CashTx?  @relation(fields: [cashTxId], references: [id])
+
+  @@unique([employeeId, period])
+  @@map("salary_period")
+}
+
+// ════════════════════════ المستخدمون والأمان ════════════════════════
+
+model AppUser {
+  id               Int      @id @default(autoincrement())
+  username         String   @unique
+  displayName      String   @map("display_name")
+  role             String   @default("cashier") // admin|cashier|viewer
+  pinHash          String?  @map("pin_hash") // للعرض التجريبي يُخزَّن نصاً
+  permissions      String   @default("{}") // JSON بالصلاحيات التفصيلية
+  defaultCashboxId Int?     @map("default_cashbox_id")
+  isActive         Boolean  @default(true) @map("is_active")
+  lastLoginAt      String?  @map("last_login_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  defaultCashbox Cashbox?   @relation(fields: [defaultCashboxId], references: [id])
+  shifts         Shift[]
+  auditLogs      AuditLog[]
+
+  @@map("app_user")
+}
+
+model AuditLog {
+  id       Int    @id @default(autoincrement())
+  userId   Int?   @map("user_id")
+  action   String // void_invoice|price_override|restore_backup|...
+  entity   String?
+  entityId Int?   @map("entity_id")
+  details  String? // JSON التغيير
+  at       String // ISO-8601
+
+  user AppUser? @relation(fields: [userId], references: [id])
+
+  @@index([at])
+  @@map("audit_log")
+}
+
+model BackupLog {
+  id        Int     @id @default(autoincrement())
+  kind      String // manual|auto|cloud|pre_restore
+  fileName  String? @map("file_name")
+  fileSize  Int?    @map("file_size")
+  checksum  String?
+  cloudPath String? @map("cloud_path")
+  status    String? @default("ok")
+  at        String // ISO-8601
+  userId    Int?    @map("user_id")
+
+  @@map("backup_log")
+}
+
+model Settings {
+  key   String @id
+  value String // JSON
+
+  @@map("settings")
+}

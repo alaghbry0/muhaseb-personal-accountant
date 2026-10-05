@@ -1,0 +1,38 @@
+{
+  "skill_name": "sandbox-multi-stack",
+  "notes": "Test prompts for future iterations. eval-0 was executed LIVE on 2026-09-27 (see worklog.md Task SKILL-1): a general-purpose subagent restored PostgreSQL from a wiped /home/z/pg using only this skill, found 3 skill bugs (keeper.sh cwd, silent bootstrap failure, missing mid-session restore path), fixed them, and verified end-to-end through the public gateway.",
+  "evals": [
+    {
+      "id": 0,
+      "name": "postgres-restore-after-reboot",
+      "prompt": "PostgreSQL disappeared after the sandbox reboot (the whole /home/z/pg folder is gone). Restore it and make it auto-revive after future reboots. The next-demo service (second Next.js app on :3005, public path /demo2) reads PostgreSQL data — make sure it works end-to-end through the public gateway.",
+      "expected_output": "Postgres 16 on 127.0.0.1:5432, pulse_demo.visits table, boot-durable mini-services/pg-keeper/, /demo2 shows live growing data through the public URL.",
+      "status": "PASSED (live, 2026-09-27) — 3 skill bugs found & fixed during run"
+    },
+    {
+      "id": 1,
+      "name": "new-python-service",
+      "prompt": "Add a small Python service to this sandbox that serves a JSON API on a free port (check what's taken first) and a status page I can open from my browser. It should survive you finishing and come back if the sandbox reboots.",
+      "expected_output": "mini-services/{name}/ with package.json (UV_PROJECT_ENVIRONMENT dev script) + pyproject.toml + app.py (assets inline), adopted via /ops/adopt, verified via ?XTransformPort={port}, auto-boots next reboot.",
+      "assertions": [
+        "page assets are inline (no external script/link tags)",
+        "service appears in ADOPTABLE and was adopted via POST /ops/adopt",
+        "curl through gateway :81 with XTransformPort returns 200",
+        "package.json dev script sets UV_PROJECT_ENVIRONMENT under /home/z/venvs/"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "third-nextjs-app",
+      "prompt": "Run a third Next.js app in this sandbox on another port and make it usable from my browser at /demo3 with working React interactivity.",
+      "expected_output": "mini-services/{name}/ with next dev -p {free port}, basePath=/demo3, turbopack.root=process.cwd(), versions pinned next 16.1.3/react 19.2.3, reverse-proxy route src/app/demo3/[[...rest]]/route.ts in main app, hydration verified by clicking something in a real browser.",
+      "assertions": [
+        "next.config.ts contains BOTH basePath and turbopack.root",
+        "package.json pins exact versions (not ^) for next/react/react-dom",
+        "src/app/demo3/[[...rest]]/route.ts proxy exists and forwards all methods",
+        "agent-browser click on an interactive element produces expected DOM change",
+        "no hydration errors in browser console"
+      ]
+    }
+  ]
+}
