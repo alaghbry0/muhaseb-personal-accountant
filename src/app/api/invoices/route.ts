@@ -68,13 +68,17 @@ export async function POST(req: NextRequest) {
 
 /**
  * GET /api/invoices — قائمة المستندات مع فلاتر.
- * ?docType=sale|purchase|sale_return|purchase_return&payStatus=&status=&customerId=&supplierId=
- * &from=&to=&q=&page= (صفحة 20) — البحث برقم المستند أو اسم العميل/المورد.
+ * ?docType=sale|purchase|sale_return|purchase_return (أو قائمة مفصولة بفواصل: sale,purchase,...)
+ * &payStatus=&status=&customerId=&supplierId=&from=&to=&q=&page= (صفحة 20)
+ * — البحث برقم المستند أو اسم العميل/المورد. القيمة المفردة تحافظ على السلوك السابق حرفياً.
  */
 export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
-    const docType = sp.get("docType") ?? "sale";
+    const docTypes = (sp.get("docType") ?? "sale")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     const payStatus = sp.get("payStatus");
     const status = sp.get("status");
     const customerId = sp.get("customerId");
@@ -85,7 +89,9 @@ export async function GET(req: NextRequest) {
     const page = Math.max(1, Number(sp.get("page") ?? 1) || 1);
     const pageSize = 20;
 
-    const where: Prisma.InvoiceWhereInput = { docType };
+    const where: Prisma.InvoiceWhereInput = {
+      docType: docTypes.length === 1 ? docTypes[0] : { in: docTypes },
+    };
     if (payStatus) where.payStatus = payStatus;
     if (status) where.status = status;
     if (customerId) where.customerId = Number(customerId);
@@ -124,6 +130,7 @@ export async function GET(req: NextRequest) {
       invoices: rows.map((r) => ({
         id: r.id,
         invoiceNo: r.invoiceNo,
+        docType: r.docType,
         payStatus: r.payStatus,
         status: r.status,
         issuedAt: r.issuedAt,

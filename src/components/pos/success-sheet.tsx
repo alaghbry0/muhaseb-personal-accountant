@@ -5,6 +5,7 @@
  * طباعة / مشاركة واتساب / بدء فاتورة جديدة — FR-02-14.
  */
 import { CheckCircle2, Printer, MessageCircle } from "lucide-react";
+import { motion } from "framer-motion";
 import { formatAmount } from "@/lib/format";
 import type { InvoiceDetailDto } from "@/domain/dto";
 import { StatusChip, PrimaryButton } from "@/components/ds";
@@ -43,9 +44,14 @@ export function SuccessSheet({
       title="تم حفظ الفاتورة بنجاح"
     >
       <div className="flex flex-col items-center gap-4 pb-2">
-        <span className="flex size-16 items-center justify-center rounded-full bg-[#34D399]/15">
+        <motion.span
+          className="flex size-16 items-center justify-center rounded-full bg-[#34D399]/15"
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 320, damping: 16, delay: 0.08 }}
+        >
           <CheckCircle2 className="size-9 text-[#34D399]" aria-hidden />
-        </span>
+        </motion.span>
         <div className="flex flex-col items-center gap-1">
           <span className="font-num text-[18px] font-bold text-foreground">
             {invoice.invoiceNo}
@@ -53,7 +59,12 @@ export function SuccessSheet({
           <StatusChip status={invoice.payStatus} />
         </div>
 
-        <div className="w-full rounded-xl border border-border/70 bg-muted/40 p-3">
+        <motion.div
+          className="w-full rounded-xl border border-border/70 bg-muted/40 p-3"
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.18, duration: 0.35, ease: "easeOut" }}
+        >
           <div className="flex justify-between py-0.5 text-[14px]">
             <span className="text-muted-foreground">الإجمالي</span>
             <span className="font-num font-bold">{formatAmount(invoice.total, { currency: cur })}</span>
@@ -80,7 +91,7 @@ export function SuccessSheet({
               </span>
             </div>
           )}
-        </div>
+        </motion.div>
 
         <div className="flex w-full flex-col gap-2">
           <PrimaryButton block onClick={() => onPrint(invoice)}>

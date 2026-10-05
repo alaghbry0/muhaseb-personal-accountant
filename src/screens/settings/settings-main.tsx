@@ -6,8 +6,8 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import {
-  Building2, Hash, Printer, SlidersHorizontal, Database, DatabaseBackup,
-  ScrollText, Info, type LucideIcon,
+  Building2, Hash, Printer, Palette, Database, DatabaseBackup,
+  ScrollText, Info, ChevronLeft, type LucideIcon,
 } from "lucide-react";
 import { getJson } from "@/lib/api";
 import { useNav } from "@/lib/nav";
@@ -25,10 +25,10 @@ interface Entry {
 
 const ENTRIES: Entry[] = [
   { title: "بيانات المنشأة", subtitle: "الاسم والهاتف والضريبة والتذييل", screen: "settings-company", icon: Building2, color: "#22D3EE" },
-  { title: "ترقيم المستندات", subtitle: "بادئات الفواتير والعدّادات السنوية", screen: "settings-numbering", icon: Hash, color: "#34D399" },
-  { title: "إعدادات الطباعة", subtitle: "القالب وحجم الورق والنسخ والخيارات", screen: "settings-printing", icon: Printer, color: "#FBBF24" },
-  { title: "إعدادات العرض", subtitle: "شكل الأرقام وحجم الخط والثيم", screen: "settings-display", icon: SlidersHorizontal, color: "#22D3EE" },
-  { title: "البيانات المرجعية", subtitle: "العملات وأسعار الصرف والصناديق", screen: "settings-data", icon: Database, color: "#34D399" },
+  { title: "ترقيم المستندات", subtitle: "بادئات الفواتير والعدّادات السنوية", screen: "settings-numbering", icon: Hash, color: "#FBBF24" },
+  { title: "إعدادات الطباعة", subtitle: "القالب وحجم الورق والنسخ والخيارات", screen: "settings-printing", icon: Printer, color: "#34D399" },
+  { title: "إعدادات العرض", subtitle: "شكل الأرقام وحجم الخط والثيم", screen: "settings-display", icon: Palette, color: "#A78BFA" },
+  { title: "البيانات المرجعية", subtitle: "العملات وأسعار الصرف والصناديق", screen: "settings-data", icon: Database, color: "#22D3EE" },
   { title: "النسخ الاحتياطي والاستعادة", subtitle: "تصدير واستيراد نسخ JSON وسجلها", screen: "settings-backup", icon: DatabaseBackup, color: "#F87171" },
   { title: "سجل التدقيق", subtitle: "من فعل ماذا ومتى", screen: "settings-audit", icon: ScrollText, color: "#FBBF24" },
   { title: "حول التطبيق", subtitle: "الإصدار وفحص سلامة القاعدة", screen: "settings-about", icon: Info, color: "#94A3B8" },
@@ -72,13 +72,21 @@ export default function SettingsMainScreen() {
             type="button"
             onClick={() => push(e.screen)}
             aria-label={e.title}
-            className="group flex min-h-28 flex-col items-start justify-between gap-2 rounded-2xl border border-border/60 bg-card p-3.5 text-right transition-colors hover:border-primary/50 hover:bg-accent/30 active:scale-[0.98]"
+            className="group flex min-h-28 flex-col items-start justify-between gap-2 rounded-2xl border border-border/60 bg-card p-3.5 text-right transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:bg-accent/30 hover:shadow-md active:scale-[0.98] active:translate-y-0"
           >
-            <span
-              className={cn("flex size-11 items-center justify-center rounded-xl")}
-              style={{ backgroundColor: `${e.color}1f` }}
-            >
-              <e.icon className="size-5.5" style={{ color: e.color }} aria-hidden />
+            <span className="flex w-full items-center justify-between gap-2">
+              <span
+                className={cn("flex size-10 items-center justify-center rounded-xl")}
+                style={{ backgroundColor: `${e.color}1A` }}
+              >
+                <e.icon className="size-5" style={{ color: e.color }} aria-hidden />
+              </span>
+              <ChevronLeft
+                className={cn(
+                  "size-4 shrink-0 text-muted-foreground/60 transition-colors group-hover:text-muted-foreground"
+                )}
+                aria-hidden
+              />
             </span>
             <span className="flex w-full flex-col gap-0.5">
               <span className="text-[14px] font-bold leading-tight text-foreground">{e.title}</span>

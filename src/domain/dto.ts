@@ -73,6 +73,8 @@ export interface InvoiceDetailDto {
 export interface InvoiceListItemDto {
   id: number
   invoiceNo: string
+  /** نوع المستند: sale|purchase|sale_return|purchase_return — يُستخدم في رقائق البحث الشامل (7-a) */
+  docType: string
   payStatus: string
   status: string
   issuedAt: string
@@ -126,6 +128,18 @@ export interface ProductSearchItemDto {
 export interface ProductSearchResponse {
   products: ProductSearchItemDto[]
   categories: Array<{ id: number; name: string }>
+}
+
+// ═══════════════ DTO الأصناف الأكثر مبيعاً (رقاقة الإضافة السريعة POS) ═══════════════
+
+/** صنف الأكثر مبيعاً — نفس بنية صنف البحث (لتغذية addProduct مباشرة) + الكمية المباعة */
+export interface TopProductDto extends ProductSearchItemDto {
+  /** مجموع الكمية المباعة خلال الفترة (فواتير بيع مكتملة) */
+  qtySold: number
+}
+
+export interface TopProductsResponse {
+  products: TopProductDto[]
 }
 
 // ═══════════════ DTO العملاء (قائمة سريعة للـ POS) ═══════════════

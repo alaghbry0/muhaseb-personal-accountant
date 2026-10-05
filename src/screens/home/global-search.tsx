@@ -1,20 +1,25 @@
 "use client";
 
 /**
- * البحث الشامل — بحث موحّد في كل بيانات التطبيق (أصناف / عملاء / موردون / فواتير مبيعات).
+ * البحث الشامل v2 — بحث موحّد في كل بيانات التطبيق:
+ * أصناف / عملاء / موردون / كل المستندات (بيع، شراء، مرتجع بيع، مرتجع شراء) / عروض الأسعار.
  * حقل لاصق أعلى الشاشة (تركيز تلقائي + مسح ✕ + debounce 250ms + حد أدنى حرفان)
- * + 4 نداءات متوازية على الـ APIs القائمة + قسم نتائج لكل نوع بعدّاد لوني.
- * الضغط على أي نتيجة يفتح بطاقة الكيان المعنية (صنف/عميل/مورد/فاتورة).
+ * + 5 نداءات متوازية على الـ APIs القائمة + قسم نتائج لكل نوع بعدّاد لوني.
+ * كل مستند يحمل رقاقة نوع ملوّنة (بيع سماوي / شراء كهرماني / مرتجعات حمراء)
+ * والضغط يفتح الشاشة الصحيحة. عروض الأسعار تفتح قائمتها (تفاصيلها لوحة داخلية).
+ * اختصار الفتح من أي شاشة: Ctrl+K (انظر app-shell) — تلميح kbd تحت حقل البحث.
  */
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Search, AlertTriangle, Phone, MapPin, Package, Users, Truck, ReceiptText,
+  Search, AlertTriangle, Phone, MapPin, Package, ReceiptText, FileText,
 } from "lucide-react";
 import { getJson } from "@/lib/api";
 import { formatAmount } from "@/lib/format";
 import { useNav } from "@/lib/nav";
-import type { ProductSearchResponse, InvoiceListResponse } from "@/domain/dto";
+import type {
+  ProductSearchResponse, InvoiceListResponse, QuotationListResponse, InvoiceListItemDto,
+} from "@/domain/dto";
 import type { CustomerDto, SupplierDto } from "@/domain/parties";
 import {
   AppHeader, AppCard, ListRow, AmountText, EmptyState, SectionTitle, StatusChip, SearchBar,
@@ -32,6 +37,17 @@ interface SuppliersResponse {
 
 const MIN_CHARS = 2;
 const DEBOUNCE_MS = 250;
+
+/** كل أنواع المستندات في بحث واحد (docType مفصولة بفواصل — مدعوم في GET /api/invoices منذ 7-a) */
+const ALL_DOC_TYPES = "sale,purchase,sale_return,purchase_return";
+
+/** رقاقة نوع المستند — لون مميز لكل نوع ضمن هوية التطبيق */
+const DOC_CHIPS: Record<string, { label: string; color: string }> = {
+  sale: { label: "بيع", color: "#22D3EE" },
+  purchase: { label: "شراء", color: "#FBBF24" },
+  sale_return: { label: "مرتجع بيع", color: "#F87171" },
+  purchase_return: { label: "مرتجع شراء", color: "#FB923C" },
+};
 
 /** قيمة مؤجّلة — تُحدَّث بعد توقّف الكتابة (نفس نمط شاشة البيع) */
 function useDebounced(value: string, ms: number): string {
@@ -55,6 +71,19 @@ function CountChip({ count, color }: { count: number; color: string }) {
   );
 }
 
+/** رقاقة نوع المستند (بيع/شراء/مرتجع بيع/مرتجع شراء) بألوان الهوية */
+function DocTypeChip({ docType }: { docType: string }) {
+  const m = DOC_CHIPS[docType] ?? { label: docType, color: "#94A3B8" };
+  return (
+    <span
+      className="inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-medium leading-4"
+      style={{ backgroundColor: `${m.color}1A`, color: m.color, borderColor: `${m.color}30` }}
+    >
+      {m.label}
+    </span>
+  );
+}
+
 export default function GlobalSearchScreen() {
   const { push } = useNav();
   const [q, setQ] = useState("");
@@ -63,7 +92,7 @@ export default function GlobalSearchScreen() {
 
   const enc = encodeURIComponent(debounced);
 
-  // ─── 4 نداءات متوازية على الـ APIs القائمة ───
+  // ─── 5 نداءات متوازية على الـ APIs القائمة ───
   const productsQ = useQuery<ProductSearchResponse>({
     queryKey: ["global-search", "products", debounced],
     queryFn: () => getJson<ProductSearchResponse>(`/api/products/search?q=${enc}&limit=20`),
@@ -84,7 +113,14 @@ export default function GlobalSearchScreen() {
 
   const invoicesQ = useQuery<InvoiceListResponse>({
     queryKey: ["global-search", "invoices", debounced],
-    queryFn: () => getJson<InvoiceListResponse>(`/api/invoices?q=${enc}&page=1`),
+    queryFn: () =>
+      getJson<InvoiceListResponse>(`/api/invoices?q=${enc}&docType=${ALL_DOC_TYPES}&page=1`),
+    enabled: active,
+  });
+
+  const quotationsQ = useQuery<QuotationListResponse>({
+    queryKey: ["global-search", "quotations", debounced],
+    queryFn: () => getJson<QuotationListResponse>(`/api/quotations?q=${enc}&page=1`),
     enabled: active,
   });
 
@@ -92,10 +128,25 @@ export default function GlobalSearchScreen() {
   const customers = customersQ.data?.customers ?? [];
   const suppliers = suppliersQ.data?.suppliers ?? [];
   const invoices = invoicesQ.data?.invoices ?? [];
+  const quotations = quotationsQ.data?.quotations ?? [];
 
-  const searching = active && (productsQ.isLoading || customersQ.isLoading || suppliersQ.isLoading || invoicesQ.isLoading);
+  const searching =
+    active &&
+    (productsQ.isLoading || customersQ.isLoading || suppliersQ.isLoading ||
+      invoicesQ.isLoading || quotationsQ.isLoading);
   const anyResults =
-    products.length > 0 || customers.length > 0 || suppliers.length > 0 || invoices.length > 0;
+    products.length > 0 || customers.length > 0 || suppliers.length > 0 ||
+    invoices.length > 0 || quotations.length > 0;
+
+  /** فتح المستند في شاشته الصحيحة: البيع في تفاصيل المبيعات، والبقية في تفاصيل المشتريات */
+  function openInvoice(inv: InvoiceListItemDto) {
+    if (inv.docType === "sale") {
+      push("sales-invoice-details", { invoiceId: inv.id });
+    } else {
+      // الشراء + مرتجع شراء + مرتجع بيع — كلها تُعرض في شاشة تفاصيل المشتريات
+      push("purchases-details", { invoiceId: inv.id });
+    }
+  }
 
   return (
     <div className="flex min-h-full flex-col">
@@ -105,8 +156,18 @@ export default function GlobalSearchScreen() {
             value={q}
             onChange={setQ}
             autoFocus
-            placeholder="ابحث في كل شيء — صنف، عميل، مورد، فاتورة…"
+            placeholder="ابحث في كل شيء — صنف، عميل، مورد، فاتورة، عرض سعر…"
           />
+          {/* تلميح الاختصار — يُكتشف من أي شاشة عبر app-shell */}
+          <p className="flex items-center justify-center gap-1.5 pt-2 text-center text-[11px] text-muted-foreground">
+            <kbd
+              dir="ltr"
+              className="font-num rounded-md border border-border bg-muted px-1.5 py-px text-[10px] leading-4 text-muted-foreground"
+            >
+              Ctrl + K
+            </kbd>
+            <span>يفتح البحث من أي شاشة</span>
+          </p>
         </div>
       </AppHeader>
 
@@ -116,7 +177,7 @@ export default function GlobalSearchScreen() {
           <EmptyState
             icon={Search}
             message="اكتب حرفين على الأقل"
-            hint="اكتب حرفين على الأقل للبحث في الأصناف والعملاء والموردين والفواتير"
+            hint="البحث يشمل الأصناف والعملاء والموردين وكل المستندات (بيع/شراء/مرتجعات) وعروض الأسعار"
           />
         ) : searching && !anyResults ? (
           /* ─── هياكل تحميل لكل قسم ─── */
@@ -134,7 +195,7 @@ export default function GlobalSearchScreen() {
           <EmptyState
             icon={Search}
             message={`لا نتائج لـ"${debounced}"`}
-            hint="جرّب كلمة أقصر أو تغيّر الإملاء — البحث يشمل الأصناف والعملاء والموردين وأرقام الفواتير"
+            hint="جرّب كلمة أقصر أو تغيّر الإملاء — البحث يشمل الأصناف والعملاء والموردين وأرقام المستندات وعروض الأسعار"
           />
         ) : (
           <div className="flex flex-col gap-4">
@@ -321,14 +382,14 @@ export default function GlobalSearchScreen() {
               </section>
             )}
 
-            {/* ─── الفواتير ─── */}
+            {/* ─── المستندات والفواتير (بيع/شراء/مرتجعات) ─── */}
             {(invoicesQ.isLoading || invoices.length > 0) && (
-              <section aria-label="نتائج الفواتير">
+              <section aria-label="نتائج المستندات والفواتير">
                 <SectionTitle
                   action={<CountChip count={invoices.length} color="#F87171" />}
                   className="mb-1.5"
                 >
-                  الفواتير
+                  المستندات والفواتير
                 </SectionTitle>
                 <AppCard noPad className="overflow-hidden">
                   {invoicesQ.isLoading ? (
@@ -337,39 +398,101 @@ export default function GlobalSearchScreen() {
                       <Skeleton className="h-14 w-full rounded-lg" />
                     </div>
                   ) : (
-                    invoices.map((inv) => (
+                    invoices.map((inv) => {
+                      const chip = DOC_CHIPS[inv.docType] ?? { label: inv.docType, color: "#94A3B8" };
+                      const partyName =
+                        inv.supplierName ??
+                        inv.customerName ??
+                        (inv.docType.startsWith("purchase") ? "مورد نقدي" : "نقدي");
+                      return (
+                        <ListRow
+                          key={inv.id}
+                          onClick={() => openInvoice(inv)}
+                          leading={
+                            <span
+                              className="flex size-11 items-center justify-center rounded-xl"
+                              style={{ backgroundColor: `${chip.color}1A`, color: chip.color }}
+                            >
+                              <ReceiptText className="size-5" aria-hidden />
+                            </span>
+                          }
+                          title={
+                            <span className="flex items-center gap-1.5">
+                              <span className="shrink-0 font-num">{inv.invoiceNo}</span>
+                              <DocTypeChip docType={inv.docType} />
+                              <StatusChip status={inv.payStatus} />
+                              {inv.status === "held" && <StatusChip status="held" />}
+                            </span>
+                          }
+                          subtitle={
+                            <span>
+                              {partyName}
+                              <span className="mx-1.5 text-border">•</span>
+                              <span className="font-num">
+                                {formatAmount(inv.itemsCount, { decimals: 0, showSymbol: false })}
+                              </span>{" "}
+                              بنود
+                            </span>
+                          }
+                          trailing={
+                            <span className="flex flex-col items-end gap-0.5">
+                              <AmountText value={inv.total} currency={inv.currencyCode} size="md" variant="neutral" />
+                              {inv.dueAmount > 0 && (
+                                <AmountText value={inv.dueAmount} currency={inv.currencyCode} size="sm" variant="due" />
+                              )}
+                            </span>
+                          }
+                        />
+                      );
+                    })
+                  )}
+                </AppCard>
+              </section>
+            )}
+
+            {/* ─── عروض الأسعار ─── */}
+            {(quotationsQ.isLoading || quotations.length > 0) && (
+              <section aria-label="نتائج عروض الأسعار">
+                <SectionTitle
+                  action={<CountChip count={quotations.length} color="#A78BFA" />}
+                  className="mb-1.5"
+                >
+                  عروض الأسعار
+                </SectionTitle>
+                <AppCard noPad className="overflow-hidden">
+                  {quotationsQ.isLoading ? (
+                    <div className="flex flex-col gap-2 p-3">
+                      <Skeleton className="h-14 w-full rounded-lg" />
+                      <Skeleton className="h-14 w-full rounded-lg" />
+                    </div>
+                  ) : (
+                    quotations.map((qt) => (
                       <ListRow
-                        key={inv.id}
-                        onClick={() => push("sales-invoice-details", { invoiceId: inv.id })}
+                        key={qt.id}
+                        onClick={() => push("sales-quotations")}
                         leading={
-                          <span className="flex size-11 items-center justify-center rounded-xl bg-[#F87171]/15 text-[#F87171]">
-                            <ReceiptText className="size-5" aria-hidden />
+                          <span className="flex size-11 items-center justify-center rounded-xl bg-[#A78BFA]/15 text-[#A78BFA]">
+                            <FileText className="size-5" aria-hidden />
                           </span>
                         }
                         title={
                           <span className="flex items-center gap-2">
-                            <span className="font-num">{inv.invoiceNo}</span>
-                            <StatusChip status={inv.payStatus} />
-                            {inv.status === "held" && <StatusChip status="held" />}
+                            <span className="font-num">{qt.quoteNo}</span>
+                            <StatusChip status={qt.status} />
                           </span>
                         }
                         subtitle={
                           <span>
-                            {inv.customerName ?? "نقدي"}
+                            {qt.customerName ?? "بدون عميل"}
                             <span className="mx-1.5 text-border">•</span>
                             <span className="font-num">
-                              {formatAmount(inv.itemsCount, { decimals: 0, showSymbol: false })}
+                              {formatAmount(qt.itemsCount, { decimals: 0, showSymbol: false })}
                             </span>{" "}
                             بنود
                           </span>
                         }
                         trailing={
-                          <span className="flex flex-col items-end gap-0.5">
-                            <AmountText value={inv.total} currency={inv.currencyCode} size="md" variant="neutral" />
-                            {inv.dueAmount > 0 && (
-                              <AmountText value={inv.dueAmount} currency={inv.currencyCode} size="sm" variant="due" />
-                            )}
-                          </span>
+                          <AmountText value={qt.total} currency={qt.currencyCode} size="md" variant="neutral" />
                         }
                       />
                     ))

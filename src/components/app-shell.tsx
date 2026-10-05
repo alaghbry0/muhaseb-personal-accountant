@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, ShoppingCart, Package, BarChart3, LayoutGrid,
 } from "lucide-react";
-import { useNav, type TabId } from "@/lib/nav";
+import { useNav, nav, type TabId } from "@/lib/nav";
 import { useDisplaySettings } from "@/components/settings/numbers-context";
 import { setDigitsShape } from "@/lib/format";
 import { registry } from "@/screens/registry";
@@ -26,6 +26,18 @@ const TABS: Array<{ id: TabId; label: string; icon: typeof LayoutDashboard }> = 
 ];
 
 const emptySubscribe = () => () => {};
+
+/** هل هدف الحدث حقلاً إدخالاً؟ (مستخدم في اختصار «/» كي لا يُخطف النص المكتوب) */
+function isEditableTarget(target: EventTarget | null): boolean {
+  const t = target instanceof HTMLElement ? target : null;
+  if (!t) return false;
+  return (
+    t.tagName === "INPUT" ||
+    t.tagName === "TEXTAREA" ||
+    t.tagName === "SELECT" ||
+    t.isContentEditable
+  );
+}
 
 /** true بعد اكتمال الترطيب (hydration): أول رسم يطابق snapshot الخادم (false) ثم يعاد الرسم بقيمة العميل */
 function useHydrated(): boolean {
@@ -57,6 +69,24 @@ export function AppShell() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 });
   }, [seq, activeTab]);
+
+  // اختصار لوحة المفاتيح (7-a): Ctrl+K / ⌘K يفتح «البحث الشامل» من أي شاشة،
+  // وزر «/» كذلك لكن فقط عندما لا يكون التركيز داخل حقل إدخال (حتى لا يُخطف الكتابة).
+  // لا يُفتح مجدداً إن كانت الشاشة أعلى الكدس بالفعل (لا تراكم).
+  useEffect(() => {
+    function onKeydown(e: KeyboardEvent) {
+      const isCtrlK = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k";
+      const isPlainSlash =
+        e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey && !isEditableTarget(e.target);
+      if (!isCtrlK && !isPlainSlash) return;
+      e.preventDefault();
+      if (useNav.getState().current().screen !== "global-search") {
+        nav.push("global-search");
+      }
+    }
+    window.addEventListener("keydown", onKeydown);
+    return () => window.removeEventListener("keydown", onKeydown);
+  }, []);
 
   const Screen = registry[current.screen];
 

@@ -25,6 +25,7 @@ import type {
   ProductSearchResponse,
   SaveInvoiceResponse,
   CustomerListResponse,
+  TopProductsResponse,
 } from "@/domain/dto";
 import type { BootstrapData } from "@/lib/types";
 import { PrimaryButton, SearchBar } from "@/components/ds";
@@ -153,6 +154,14 @@ export default function SalesPosScreen({ mode: modeParam }: { mode?: string }) {
     enabled: debounced.trim().length >= 2,
     staleTime: 15_000,
   });
+
+  // ─── الأكثر مبيعاً (رقائق الإضافة السريعة — 30 يوماً) ───
+  const { data: topProductsData } = useQuery<TopProductsResponse>({
+    queryKey: ["products-top"],
+    queryFn: () => getJson<TopProductsResponse>("/api/products/top?limit=8&days=30"),
+    staleTime: 5 * 60_000,
+  });
+  const topProducts = topProductsData?.products ?? [];
 
   // مطابقة الباركود الكامل → إضافة تلقائية + بيب + تفريغ البحث
   useEffect(() => {
@@ -565,6 +574,53 @@ export default function SalesPosScreen({ mode: modeParam }: { mode?: string }) {
           placeholder="إبحث عن صنف — الاسم أو الباركود"
           onScan={() => setSheet("picker")}
         />
+
+        {/* رقائق الأكثر مبيعاً — إضافة بنقرة واحدة (نفس منطق نتيجة البحث) */}
+        {topProducts.length > 0 && (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="flex shrink-0 items-center gap-1 rounded-full bg-muted/70 px-2.5 py-1.5 text-[11px] font-bold text-muted-foreground">
+              الأكثر مبيعاً ⚡
+            </span>
+            <div className="scrollbar-slim snap-x flex flex-1 gap-2 overflow-x-auto pb-1">
+              {topProducts.map((p) => {
+                const price = p.prices[currencyCode];
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    aria-label={`إضافة ${p.name} للفاتورة`}
+                    onClick={() => {
+                      pos.addProduct(p);
+                      beep(1318, 0.09);
+                    }}
+                    className={cn(
+                      "flex shrink-0 snap-start items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-2 transition-all",
+                      "hover:border-primary/50 hover:bg-accent/30 active:scale-95",
+                      p.isLowStock && "border-[#FBBF24]/50 ring-1 ring-[#FBBF24]/30"
+                    )}
+                  >
+                    <span className="max-w-32 truncate text-[12.5px] font-medium text-foreground">
+                      {p.name}
+                    </span>
+                    <span className="font-num text-[13px] font-bold text-primary">
+                      {price != null
+                        ? formatAmount(price, { currency: currencyCode, showSymbol: false })
+                        : "—"}
+                    </span>
+                    {p.isLowStock ? (
+                      <span className="size-1.5 shrink-0 rounded-full bg-[#FBBF24]" aria-label="رصيد منخفض" />
+                    ) : (
+                      <span className="font-num shrink-0 text-[10px] text-muted-foreground">
+                        {formatAmount(p.qtySold, { decimals: 0, showSymbol: false })} بيع
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* نتائج البحث الفوري */}
         {search.trim().length >= 2 && searchQ.data && !searchQ.data.products.some((p) => p.barcode === search.trim()) && (
           <div className="absolute inset-x-3 z-20 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-card shadow-xl">

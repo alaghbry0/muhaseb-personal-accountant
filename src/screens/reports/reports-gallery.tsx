@@ -5,8 +5,8 @@
  * (المالية / المبيعات / النقدية / الضرائب / البشر) ببطاقات أيقونية ووصف.
  */
 import {
-  TrendingUp, BarChart3, Clock4, Users, Package, Wallet, Receipt, Landmark,
-  Percent, BriefcaseBusiness, ChevronLeft, PieChart,
+  TrendingUp, BarChart3, Clock, Users, PackageSearch, Wallet, Receipt, Calculator,
+  CalendarClock, Landmark, BriefcaseBusiness, ChevronLeft, PieChart,
 } from "lucide-react";
 import { useNav } from "@/lib/nav";
 import { SectionTitle } from "@/components/ds";
@@ -26,7 +26,7 @@ const GROUPS: Array<{ title: string; icon: typeof BarChart3; items: ReportTile[]
     icon: PieChart,
     items: [
       { label: "حركة الشركة", desc: "الأرباح والخسائر — إيرادات وتكاليف ومصاريف وصافي الربح", screen: "report-pl", icon: TrendingUp, color: "#34D399" },
-      { label: "أعمار الديون", desc: "أرصدة العملاء موزعة حسب عمر الدين (0–30 / 31–60 / 61–90 / +90)", screen: "report-aging", icon: Clock4, color: "#FBBF24" },
+      { label: "أعمار الديون", desc: "أرصدة العملاء موزعة حسب عمر الدين (0–30 / 31–60 / 61–90 / +90)", screen: "report-aging", icon: Clock, color: "#F87171" },
     ],
   },
   {
@@ -34,7 +34,7 @@ const GROUPS: Array<{ title: string; icon: typeof BarChart3; items: ReportTile[]
     icon: BarChart3,
     items: [
       { label: "المبيعات حسب", desc: "حسب العميل أو المندوب أو الفئة أو الصنف أو اليوم مع مقارنة الفترة السابقة", screen: "report-sales-by", icon: BarChart3, color: "#22D3EE" },
-      { label: "حركة صنف", desc: "بطاقة صنف: كل الحركات والرصيد التراكمي ووارد/صادر", screen: "report-item-movement", icon: Package, color: "#FB923C" },
+      { label: "حركة صنف", desc: "بطاقة صنف: كل الحركات والرصيد التراكمي ووارد/صادر", screen: "report-item-movement", icon: PackageSearch, color: "#FBBF24" },
     ],
   },
   {
@@ -42,22 +42,22 @@ const GROUPS: Array<{ title: string; icon: typeof BarChart3; items: ReportTile[]
     icon: Wallet,
     items: [
       { label: "الصناديق", desc: "افتتاحي ووارد وصادر وختامي لكل صندوق بعملته", screen: "report-cashboxes", icon: Wallet, color: "#22D3EE" },
-      { label: "المصروفات", desc: "المصروفات حسب الفئة مع النسب والمقارنة", screen: "report-expenses", icon: Receipt, color: "#F87171" },
-      { label: "الأقساط", desc: "المحصّل والمستحق والمتأخر + توقع التدفق النقدي 6 أشهر", screen: "report-installments", icon: Clock4, color: "#34D399" },
+      { label: "المصروفات", desc: "المصروفات حسب الفئة مع النسب والمقارنة", screen: "report-expenses", icon: Calculator, color: "#F87171" },
+      { label: "الأقساط", desc: "المحصّل والمستحق والمتأخر + توقع التدفق النقدي 6 أشهر", screen: "report-installments", icon: CalendarClock, color: "#FBBF24" },
     ],
   },
   {
     title: "الضرائب",
-    icon: Percent,
+    icon: Landmark,
     items: [
-      { label: "تقرير الضريبة", desc: "إجمالي المبيعات والمشتريات والضريبة المحصّلة والمدخلة", screen: "report-tax", icon: Percent, color: "#A78BFA" },
+      { label: "تقرير الضريبة", desc: "إجمالي المبيعات والمشتريات والضريبة المحصّلة والمدخلة", screen: "report-tax", icon: Receipt, color: "#A78BFA" },
     ],
   },
   {
     title: "تقارير الموارد البشرية",
     icon: BriefcaseBusiness,
     items: [
-      { label: "أداء المناديب", desc: "فواتير ومبيعات وتحصيلات ومرتجعات وعمولات كل مندوب", screen: "report-reps", icon: Users, color: "#F472B6" },
+      { label: "أداء المناديب", desc: "فواتير ومبيعات وتحصيلات ومرتجعات وعمولات كل مندوب", screen: "report-reps", icon: Users, color: "#34D399" },
     ],
   },
 ];
@@ -96,11 +96,11 @@ export default function ReportsGalleryScreen() {
                   key={it.screen}
                   type="button"
                   onClick={() => push(it.screen)}
-                  className="flex items-center gap-3 rounded-2xl border border-border/60 bg-card p-3.5 text-start shadow-[0_2px_12px_rgba(0,0,0,0.25)] transition-colors hover:bg-accent/30 active:scale-[0.99]"
+                  className="flex items-center gap-3 rounded-2xl border border-border/60 bg-card p-3.5 text-start shadow-[0_2px_12px_rgba(0,0,0,0.25)] transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-accent/30 hover:shadow-lg active:scale-[0.99] active:translate-y-0"
                 >
                   <span
-                    className="flex size-11 shrink-0 items-center justify-center rounded-xl"
-                    style={{ backgroundColor: `${it.color}22`, color: it.color }}
+                    className="flex size-10 shrink-0 items-center justify-center rounded-xl"
+                    style={{ backgroundColor: `${it.color}1A`, color: it.color }}
                   >
                     <Icon className="size-5" aria-hidden />
                   </span>
