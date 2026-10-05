@@ -18,6 +18,7 @@ import {
 } from "recharts";
 import { getJson } from "@/lib/api";
 import { formatDateLong, formatAmount } from "@/lib/format";
+import { useChartTheme } from "@/lib/chart-theme";
 import { useNav } from "@/lib/nav";
 import type { BootstrapData, DashboardData } from "@/lib/types";
 import { AppCard, AmountText, StatTile, SectionTitle, ListRow, PrimaryButton } from "@/components/ds";
@@ -49,6 +50,8 @@ const MODULES: ModuleTile[] = [
 
 export default function HomeScreen() {
   const { push } = useNav()
+  // ألوان الرسم حسب الثيم (داكن = الحالي حرفياً / فاتح = نظائر أدكن مقروءة)
+  const ct = useChartTheme()
   const { data: boot } = useQuery<BootstrapData>({
     queryKey: ["bootstrap"],
     queryFn: () => getJson<BootstrapData>("/api/bootstrap"),
@@ -170,13 +173,13 @@ export default function HomeScreen() {
             <AreaChart data={chartData} margin={{ top: 6, right: 6, bottom: 0, left: 6 }}>
               <defs>
                 <linearGradient id="salesArea" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#22D3EE" stopOpacity={0.45} />
-                  <stop offset="100%" stopColor="#22D3EE" stopOpacity={0.02} />
+                  <stop offset="0%" stopColor={ct.line1} stopOpacity={0.45} />
+                  <stop offset="100%" stopColor={ct.line1} stopOpacity={0.02} />
                 </linearGradient>
               </defs>
               <XAxis
                 dataKey="label"
-                tick={{ fill: "#94A3B8", fontSize: 10, fontFamily: "var(--font-plex-arabic)" }}
+                tick={{ fill: ct.axisTick, fontSize: 10, fontFamily: "var(--font-plex-arabic)" }}
                 tickLine={false}
                 axisLine={false}
                 interval={6}
@@ -184,14 +187,15 @@ export default function HomeScreen() {
               <YAxis hide width={0} />
               <Tooltip
                 contentStyle={{
-                  background: "#1E293B",
-                  border: "1px solid #334155",
+                  background: ct.tooltipBg,
+                  border: `1px solid ${ct.tooltipBorder}`,
                   borderRadius: 12,
                   fontFamily: "var(--font-tajawal)",
                   fontSize: 12,
                   direction: "rtl",
+                  boxShadow: ct.tooltipShadow,
                 }}
-                labelStyle={{ color: "#94A3B8" }}
+                labelStyle={{ color: ct.tooltipLabel }}
                 formatter={(value: number | string) => [
                   formatAmount(Number(value), { currency: "YER" }),
                   "المبيعات",
@@ -200,7 +204,7 @@ export default function HomeScreen() {
               <Area
                 type="monotone"
                 dataKey="total"
-                stroke="#22D3EE"
+                stroke={ct.line1}
                 strokeWidth={2}
                 fill="url(#salesArea)"
                 isAnimationActive={false}

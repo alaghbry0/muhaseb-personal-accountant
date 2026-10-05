@@ -43,7 +43,8 @@ export function SelectField({
       <label htmlFor={id} className="text-[13px] font-bold text-foreground">
         {label} {required && <span className="text-[#F87171]">*</span>}
       </label>
-      <Select value={value || undefined} onValueChange={onChange}>
+      {/* دائماً controlled — قيمة فارغة تعرض placeholder (لا عنصر يطابقها) */}
+      <Select value={value} onValueChange={onChange}>
         <SelectTrigger id={id} dir="rtl" className="h-12 w-full rounded-xl border-border bg-background text-[14px]">
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>

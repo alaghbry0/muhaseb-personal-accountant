@@ -9,7 +9,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDownToLine, ArrowUpFromLine, Printer, ReceiptText } from "lucide-react";
 import { getJson } from "@/lib/api";
-import { formatDate, formatTime12 } from "@/lib/format";
+import { formatDateDisplay, formatTime12 } from "@/lib/format";
 import type { VoucherDto, VoucherKind } from "@/domain/parties";
 import type { BootstrapData } from "@/lib/types";
 import {
@@ -144,7 +144,7 @@ export default function PartiesVoucherScreen() {
                   <span className="block truncate text-[12px] text-muted-foreground">
                     <span className="font-num">{v.number}</span>
                     <span className="mx-1">•</span>
-                    <span className="font-num">{formatDate(v.txDate)}</span>
+                    <span className="font-num">{formatDateDisplay(v.txDate)}</span>
                     <span className="mx-1">•</span>
                     <span className="font-num">{formatTime12(v.createdAt)}</span>
                     {v.refInvoiceNo && (

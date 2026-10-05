@@ -6,14 +6,12 @@
  */
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Plus, Wallet, Landmark, ArrowLeftRight, ArrowDownLeft, ArrowUpRight,
-  Receipt, UserMinus, BadgeDollarSign, Banknote, ChevronLeft, Inbox,
-} from "lucide-react";
+import { Plus, Wallet, ChevronLeft, Receipt } from "lucide-react";
 import { getJson } from "@/lib/api";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
 import { useNav } from "@/lib/nav";
 import { AmountText, EmptyState, ListRow, SectionTitle } from "@/components/ds";
+import { TX_META, TxDetailsSheet } from "@/components/cash/tx-details-sheet";
 import type { CashTxDto } from "@/domain/cash";
 import { cn } from "@/lib/utils";
 
@@ -38,20 +36,6 @@ interface TxResponse {
   pages: number;
 }
 
-/** أيقونة + لون كل نوع حركة */
-const TX_META: Record<string, { icon: typeof Receipt; color: string; label: string }> = {
-  receipt: { icon: ArrowDownLeft, color: "#34D399", label: "قبض" },
-  payment: { icon: ArrowUpRight, color: "#F87171", label: "صرف" },
-  expense: { icon: Receipt, color: "#FB923C", label: "مصروف" },
-  employee_advance: { icon: UserMinus, color: "#FBBF24", label: "سحبية" },
-  commission_payout: { icon: BadgeDollarSign, color: "#F472B6", label: "عمولة" },
-  box_transfer: { icon: ArrowLeftRight, color: "#22D3EE", label: "تحويل" },
-  bank_deposit: { icon: Landmark, color: "#A78BFA", label: "إيداع بنكي" },
-  bank_withdraw: { icon: Banknote, color: "#34D399", label: "سحب بنكي" },
-  salary_batch: { icon: Wallet, color: "#F87171", label: "رواتب" },
-  opening: { icon: Inbox, color: "#94A3B8", label: "افتتاحي" },
-};
-
 const FILTERS: Array<{ id: string; label: string }> = [
   { id: "", label: "كل الحركات" },
   { id: "receipt", label: "قبض" },
@@ -69,6 +53,7 @@ export default function CashBoxesScreen() {
   const [typeFilter, setTypeFilter] = useState("");
   const [boxFilter, setBoxFilter] = useState<number | null>(null);
   const [page, setPage] = useState(1);
+  const [selectedTx, setSelectedTx] = useState<CashTxDto | null>(null);
 
   const { data: boxesData, isLoading } = useQuery<CashboxesResponse>({
     queryKey: ["cashbox", "boxes"],
@@ -144,7 +129,7 @@ export default function CashBoxesScreen() {
                     <span className="text-[15px] font-bold text-foreground">{b.name}</span>
                     <span className="text-[12px] text-muted-foreground">
                       {b.currencyCode === "YER" ? "ريال يمني" : b.currencyCode === "SAR" ? "ريال سعودي" : b.currencyCode} •{" "}
-                      {b.txCount} حركة{b.lastTxDate ? ` • آخر نشاط ${formatDate(b.lastTxDate)}` : " • لا نشاط"}
+                      {b.txCount} حركة{b.lastTxDate ? ` • آخر نشاط ${formatDateDisplay(b.lastTxDate)}` : " • لا نشاط"}
                     </span>
                   </div>
                 </div>
@@ -252,6 +237,7 @@ export default function CashBoxesScreen() {
               return (
                 <ListRow
                   key={t.id}
+                  onClick={() => setSelectedTx(t)}
                   leading={
                     <span
                       className="flex size-11 shrink-0 items-center justify-center rounded-xl"
@@ -271,7 +257,7 @@ export default function CashBoxesScreen() {
                   }
                   subtitle={
                     <span className="line-clamp-1">
-                      {formatDate(t.txDate)} • {t.cashboxName}
+                      {formatDateDisplay(t.txDate)} • {t.cashboxName}
                       {t.description ? ` • ${t.description}` : ""}
                     </span>
                   }
@@ -304,6 +290,9 @@ export default function CashBoxesScreen() {
         )}
 
       </div>
+
+      {/* ─── ورقة تفاصيل/تعديل/حذف الحركة (FR-04-08) ─── */}
+      <TxDetailsSheet tx={selectedTx} open={!!selectedTx} onOpenChange={(o) => !o && setSelectedTx(null)} />
     </div>
   );
 }

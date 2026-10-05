@@ -13,7 +13,7 @@ import {
   Wallet, UserRound, Save, Info,
 } from "lucide-react";
 import { getJson, postJson } from "@/lib/api";
-import { formatAmount, formatDate, formatTime12 } from "@/lib/format";
+import { formatAmount, formatDateDisplay, formatTime12 } from "@/lib/format";
 import { useNav } from "@/lib/nav";
 import { calcInvoiceTotals } from "@/domain/invoice";
 import type { ProductSearchItemDto, InvoiceDetailDto } from "@/domain/dto";
@@ -233,7 +233,7 @@ export default function PurchasesNewScreen({
               {nextNo?.invoiceNo ?? "…"}
             </span>
             <span className="font-num text-[12px] text-muted-foreground">
-              {formatDate(new Date())} | {formatTime12(new Date())}
+              {formatDateDisplay(new Date())} | {formatTime12(new Date())}
             </span>
             {exchangeRate !== 1 && (
               <span className="font-num rounded-full bg-[#22D3EE]/10 px-2.5 py-1 text-[11.5px] font-bold text-[#22D3EE]">

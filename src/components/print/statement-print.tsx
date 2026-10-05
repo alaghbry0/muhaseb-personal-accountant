@@ -6,7 +6,7 @@
  */
 import "./print.css";
 import { toast } from "sonner";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
 import type { StatementResult } from "@/domain/parties";
 import type { PrintCompanyInfo } from "./voucher-types";
 
@@ -27,7 +27,7 @@ function statementHtml(st: StatementResult, company: PrintCompanyInfo, phone: st
     .map(
       (r) => `
       <tr>
-        <td class="num">${r.date ? formatDate(r.date) : "—"}</td>
+        <td class="num">${r.date ? formatDateDisplay(r.date) : "—"}</td>
         <td>${esc(r.docNo ?? "—")}</td>
         <td>${esc(r.docLabel)}</td>
         <td class="num">${r.debit > 0 ? fmt(r.debit) : "—"}</td>
@@ -63,7 +63,7 @@ function statementHtml(st: StatementResult, company: PrintCompanyInfo, phone: st
         <h2>كشف حساب — ${st.partyType === "customer" ? "عميل" : "مورد"}</h2>
         <div class="rc-row"><span>الطرف</span><span class="rc-val">${esc(st.partyName)}</span></div>
         ${phone ? `<div class="rc-row"><span>الهاتف</span><span class="rc-val">${esc(phone)}</span></div>` : ""}
-        <div class="rc-row"><span>الفترة</span><span class="rc-val">${st.from ? `${formatDate(st.from)} — ${formatDate(st.to)}` : `حتى ${formatDate(st.to)}`}</span></div>
+        <div class="rc-row"><span>الفترة</span><span class="rc-val">${st.from ? `${formatDateDisplay(st.from)} — ${formatDateDisplay(st.to)}` : `حتى ${formatDateDisplay(st.to)}`}</span></div>
         <div class="rc-row"><span>العملة</span><span class="rc-val">${esc(cur)}</span></div>
       </div>
     </div>

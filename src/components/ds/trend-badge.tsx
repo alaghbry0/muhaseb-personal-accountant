@@ -38,9 +38,10 @@ export function TrendBadge({ percent, goodWhenDown = false, className }: TrendBa
       )}
     >
       <Icon className="size-3" aria-hidden />
-      {clamped > 0 ? "+" : ""}
-      {clamped}
-      {capped ? "+" : ""}%
+      {/* قيد النسب: عند التقييد نعرض ">999%" / "<-999%" — أوضح من تكرار + */}
+      {capped
+        ? `${clamped > 0 ? ">" : "<"}${Math.abs(clamped)}%`
+        : `${clamped > 0 ? "+" : ""}${clamped}%`}
     </span>
   );
 }

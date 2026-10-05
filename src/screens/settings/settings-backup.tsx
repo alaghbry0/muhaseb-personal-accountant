@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { getJson, postJson } from "@/lib/api";
-import { formatAmount, formatDateTime } from "@/lib/format";
+import { formatAmount, formatDateTimeDisplay } from "@/lib/format";
 import { AppHeader, AppCard, PrimaryButton, EmptyState, StatusChip } from "@/components/ds";
 import { PosSheet } from "@/components/pos/pos-sheet";
 import { cn } from "@/lib/utils";
@@ -250,7 +250,7 @@ export default function SettingsBackupScreen() {
                           {r.fileName ?? "—"}
                         </span>
                         <span className="text-[11px] text-muted-foreground">
-                          {formatDateTime(r.at)} {r.userName ? `• ${r.userName}` : ""}
+                          {formatDateTimeDisplay(r.at)} {r.userName ? `• ${r.userName}` : ""}
                         </span>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-0.5">
@@ -320,7 +320,7 @@ export default function SettingsBackupScreen() {
             <div className="flex flex-col gap-1.5 rounded-xl bg-muted/50 p-3 text-[13px]">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">تاريخ النسخة</span>
-                <span className="font-medium text-foreground">{formatDateTime(pendingFile.meta.date)}</span>
+                <span className="font-medium text-foreground">{formatDateTimeDisplay(pendingFile.meta.date)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">إصدار التطبيق</span>

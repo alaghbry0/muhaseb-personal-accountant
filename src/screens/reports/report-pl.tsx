@@ -12,7 +12,8 @@ import {
 } from "recharts";
 import { TrendingUp, ShoppingBag, Coins, Calculator, BadgeDollarSign } from "lucide-react";
 import { getJson } from "@/lib/api";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
+import { useChartTheme } from "@/lib/chart-theme";
 import { AppHeader, AmountText, SectionTitle, StatTile } from "@/components/ds";
 import { PeriodPicker, makePeriodState, periodLabel, type PeriodState } from "@/components/reports/period-picker";
 import { ReportTable, ReportToolbar } from "@/components/reports/report-table";
@@ -23,6 +24,8 @@ import type { ProfitLossReport } from "@/domain/reports";
 export default function ReportPlScreen() {
   const [period, setPeriod] = useState<PeriodState>(makePeriodState("month"));
   const { company, baseCurrency } = usePrintCompany();
+  // ألوان الرسم حسب الثيم (داكن = الحالي حرفياً / فاتح = نظائر أدكن مقروءة)
+  const ct = useChartTheme();
 
   const url = `/api/reports/profit-loss?from=${period.from}&to=${period.to}`;
   const { data, isLoading } = useQuery<ProfitLossReport>({
@@ -142,10 +145,10 @@ export default function ReportPlScreen() {
             <div dir="ltr" className="h-52 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData} margin={{ top: 6, right: 6, bottom: 0, left: 6 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={{ stroke: "#334155" }} tickLine={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: ct.axisTick }} axisLine={{ stroke: ct.axisLine }} tickLine={false} />
                   <YAxis
-                    tick={{ fontSize: 10, fill: "#94A3B8" }}
+                    tick={{ fontSize: 10, fill: ct.axisTick }}
                     axisLine={false}
                     tickLine={false}
                     width={46}
@@ -153,28 +156,29 @@ export default function ReportPlScreen() {
                   />
                   <Tooltip
                     contentStyle={{
-                      background: "#1E293B",
-                      border: "1px solid #334155",
+                      background: ct.tooltipBg,
+                      border: `1px solid ${ct.tooltipBorder}`,
                       borderRadius: 12,
                       fontSize: 12,
                       direction: "rtl",
+                      boxShadow: ct.tooltipShadow,
                     }}
-                    labelStyle={{ color: "#F1F5F9", fontWeight: 700 }}
+                    labelStyle={{ color: ct.tooltipLabelStrong, fontWeight: 700 }}
                     formatter={(value: number | string, name: string) => [
                       formatAmount(Number(value)),
                       name,
                     ]}
                   />
-                  <Bar dataKey="الايرادات" fill="#34D399" radius={[4, 4, 0, 0]} maxBarSize={22} />
-                  <Bar dataKey="المصروفات" fill="#F87171" radius={[4, 4, 0, 0]} maxBarSize={22} />
-                  <Line type="monotone" dataKey="الصافي" stroke="#22D3EE" strokeWidth={2.5} dot={{ r: 3, fill: "#22D3EE" }} />
+                  <Bar dataKey="الايرادات" fill={ct.line2} radius={[4, 4, 0, 0]} maxBarSize={22} />
+                  <Bar dataKey="المصروفات" fill={ct.barNeg} radius={[4, 4, 0, 0]} maxBarSize={22} />
+                  <Line type="monotone" dataKey="الصافي" stroke={ct.line1} strokeWidth={2.5} dot={{ r: 3, fill: ct.line1 }} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
             <div className="mt-2 flex items-center justify-center gap-4 text-[11.5px] text-muted-foreground">
-              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-[#34D399]" /> إيرادات</span>
-              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-[#F87171]" /> مصروفات + عمولات</span>
-              <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded bg-[#22D3EE]" /> الصافي</span>
+              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm" style={{ backgroundColor: ct.line2 }} /> إيرادات</span>
+              <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm" style={{ backgroundColor: ct.barNeg }} /> مصروفات + عمولات</span>
+              <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded" style={{ backgroundColor: ct.line1 }} /> الصافي</span>
             </div>
           </div>
         </>
@@ -220,7 +224,7 @@ export default function ReportPlScreen() {
       {/* ─── أدوات ─── */}
       <ReportToolbar onPrint={doPrint} csvRows={csvRows} csvPrefix="profit-loss" disabled={!data} />
       <p className="text-center text-[11.5px] text-muted-foreground">
-        تقرير من {formatDate(period.from)} إلى {formatDate(period.to)} — {(data?.series?.length ?? 0)} نقطة زمنية
+        تقرير من {formatDateDisplay(period.from)} إلى {formatDateDisplay(period.to)} — {(data?.series?.length ?? 0)} نقطة زمنية
         {s?.salesCount ? ` • ${s.salesCount} فاتورة` : ""}
       </p>
     </div>

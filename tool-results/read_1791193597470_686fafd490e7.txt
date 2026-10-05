@@ -1,0 +1,639 @@
+     1→# سجل العمل — مشروع «المُحاسِب الشخصي» (نسخة ويب مكافئة)
+     2→
+     3→> **وثيقة تسليم بين الوكلاء — إلزامي قراءتها قبل أي عمل وتحديثها بعده.**
+     4→
+     5→## 0. قرار البيئة (مهم جداً — اقرأه أولاً)
+     6→
+     7→طلب المستخدم الأصلي: تطبيق أندرويد React Native + Expo محاسبي عربي RTL أوفلاين (نسخة مكافئة لتطبيق «المحاسب المالي | فواتير مبيعات»).
+     8→
+     9→**بيئة التنفيذ الفعلية**: صندوق ويب (Sandbox) يشغّل Next.js 16 على المنفذ 3000 فقط، والمستخدم يرى **حصراً** المسار `/` (src/app/page.tsx) عبر لوحة المعاينة. لا يمكن تشغيل/معاينة React Native هنا.
+    10→
+    11→**القرار المعتمد**: بناء **نسخة ويب مكافئة وظيفياً وتصميمياً** كاملة داخل Next.js:
+    12→- SPA عربي RTL بالكامل بملامح تطبيق جوال (إطار موبايل مركزي على الشاشات الكبيرة، شريط تبويبات سفلي، تنقل بشاشات مكدسة client-side).
+    13→- نفس نموذج البيانات (35 جدولاً حرفياً من SRS §5.3) عبر Prisma + SQLite محلي.
+    14→- نفس منطق الأعمال في طبقة Domain نقية (TS خالص بلا React) تحت src/domain/.
+    15→- نفس الهوية البصرية: داكن كحلي/سماوي (DS-01..DS-11)، خطوط Tajawal و IBM Plex Sans Arabic، مكونات DS-17..DS-28.
+    16→- «الطباعة» = قالب إيصال حراري 58/80مم عبر window.print() + مشاركة واتساب عبر wa.me. «الأوفلاين» = كل البيانات محلية (لا نداءات خارجية سوى خطوط Google التي تتحول fallback).
+    17→- بلا اشتراكات/إعلانات/تتبّع — كما نصّ SRS §11.
+    18→
+    19→**مصادر الحقيقة (إلزامية):**
+    20→1. `/home/z/my-project/docs/وثيقة-مواصفات-التطبيق-المحاسبي-SRS.md` — المعمارية + 35 جدولاً (§5.3 سطر 494+) + FR (§4) + التصميم (§6) + الخطة (§9).
+    21→2. `/home/z/my-project/docs/دليل-الشاشات-المرجعي.md` — 61 شاشة محللة (النصوص/الأزرار/التخطيط). عند أي تعارض: SRS يفصل في المعمارية والبيانات، الدليل في تخطيط الواجهة ونصوصها.
+    22→3. مجلد لقطات غير متوفر محلياً — الدليل أعلاه يحتوي تحليلها كاملاً.
+    23→
+    24→## 1. قواعد معمارية ملزمة لكل الوكلاء
+    25→
+    26→- **الصفحة الوحيدة**: src/app/page.tsx فقط (SPA). يُمنع إنشاء أي صفحات/routes أخرى. API فقط تحت src/app/api/**.
+    27→- **الخادم يعمل** (bun run dev على 3000، خلفياً) — لا تُعِد تشغيله ولا تشغّل build أبداً. راقب `tail -40 dev.log` بعد تعديلاتك.
+    28→- **Prisma/SQLite**: سكيما كاملة في prisma/schema.prisma. أوامر: `bun run db:push` ثم `bun run db:generate`. الاستيراد: `import { db } from '@/lib/db'`. لا Decimal في SQLite → استخدم Float مع تقريب دقيق عبر src/domain/money.ts.
+    29→- **الواجهة أولاً ثم الربط**: ابنِ الشاشة ثم الـ API داخل مهمتك.
+    30→- **RTL**: html dir="rtl" lang="ar". استخدم خصائص Tailwind المنطقية (ms-/me-/ps-/pe-/start-/end-) لا left/right.
+    31→- **ممنوعات**: تعديل ملفات الوكيل الآخر، إنشاء اختبارات، إضافة تتبّع/إعلانات، ألوان indigo/blue الافتراضية (الهوية كحلي/سماوي DS-04 #22D3EE).
+    32→- **ملكية الملفات المشتركة** (من أنشأها الوكيل 1 يملكها — الآخرون لا يعدلونها، فقط يضيفون ملفات جديدة في مجلداتهم):
+    33→  - src/app/layout.tsx، src/app/globals.css، src/app/page.tsx
+    34→  - src/lib/{db,utils,format,nav,api}.ts
+    35→  - src/components/ds/** (نظام التصميم — يمكن إضافة ملفات جديدة فقط)
+    36→  - src/screens/registry.tsx + src/screens/<module>/index.tsx (كل وكيل يستبدل stubs داخل **مجلد وحدته فقط**)
+    37→- **بنية الشاشات**: كل شاشة مكوّن افتراضي default export في src/screens/<module>/<screen>.tsx، يُسجَّل في src/screens/<module>/index.tsx ضمن `export const screens: Record<string, Component>`. التنقل: `useNav().push('screen-id', params)` / `pop()`.
+    38→- **API**: REST تحت src/app/api/**. المتعهد: GET للقوائم/التقارير، POST للإنشاء (JSON)، PATCH للتعديل. الاستجابة دائماً JSON مع معالجة أخطاء موحدة. المنطق الحسابي الحرج داخل src/domain (نقي قابل للاختبار) ويستدعى من الـ API داخل `$transaction` ذرّية.
+    39→- **الأرقام والعملات**: تنسيق موحد عبر src/lib/format.ts (فواصل آلاف + رمز عملة: ر.ي / ر.س / $). الأرقام غربية 0-9.
+    40→- **الدلالة اللونية**: قبض/وارد/ربح = أخضر #34D399، صرف/دفع/خصم = أحمر #F87171، آجل/مستحق = كهرماني #FBBF24، معلّق = رمادي #64748B.
+    41→
+    42→## 2. خريطة الشاشات (IDs) — يسجّلها الوكيل 1 كـ stubs ثم تُملأ
+    43→
+    44→- **home**: home
+    45→- **sales**: sales-pos (شاشة البيع ⭐)، sales-invoices، sales-invoice-details، sales-quotations
+    46→- **purchases**: purchases-list، purchases-new، purchases-details
+    47→- **inventory**: inventory-products، inventory-product-card، inventory-product-form، inventory-categories، inventory-units، inventory-warehouses، inventory-stocktake، inventory-transfers، inventory-alerts، inventory-movements
+    48→- **parties**: parties-customers، parties-customer-card، parties-suppliers، parties-supplier-card، parties-voucher (سند قبض/صرف)، parties-reps، parties-rep-card
+    49→- **installments**: installments-plans، installments-due
+    50→- **cash**: cash-boxes (الخزينة)، cash-tx-new، cash-expenses، cash-expense-categories، cash-shift (الوردية)
+    51→- **employees**: employees-list، employees-card، employees-attendance، employees-advances، employees-payroll
+    52→- **reports**: reports-gallery، report-pl (حركة الشركة)، report-sales-by، report-item-movement، report-aging، report-installments، report-expenses، report-cashboxes، report-tax، report-reps
+    53→- **settings**: settings-main، settings-company، settings-numbering، settings-printing، settings-display، settings-data، settings-backup، settings-audit، settings-about
+    54→
+    55→## 3. خطة المهام وحالتها
+    56→
+    57→| Task ID | الوكيل | المهمة | الحالة |
+    58→|---|---|---|---|
+    59→| 1 | full-stack-developer | التأسيس: السكيما 35 جدولاً + Seed يمني + الثيم/الخطوط/RTL + نظام التصميم + هيكل SPA بشريط تبويبات + الداشبورد + طبقة domain الأساس + API bootstrap/dashboard | ✅ |
+    60→| 2 | full-stack-developer | الفوترة ⭐: شاشة البيع POS كاملة + حفظ ذرّي (مخزون/WAC/صندوق/أرصدة) + قائمة وتفاصيل الفواتير + طباعة إيصال حراري + واتساب + عروض أسعار + تعليق فواتير + seed فواتير تجريبية | ✅ |
+    61→| 3-a | full-stack-developer | المخزون والمشتريات: شاشات المشتريات والمرتجعات + إدارة الأصناف/الفئات/الوحدات/المخازن + الجرد + التحويلات + التنبيهات + سجل الحركات | ✅ |
+    62→| 3-b | full-stack-developer | الأطراف والأقساط: العملاء/الموردون/كشوف الحسابات + سندات القبض والصرف + خطط التقسيط والتحصيل والمستحق اليوم/الأسبوع | ✅ |
+    63→| 4-a | full-stack-developer | الخزينة والتقارير: الصناديق + الحركات + المصروفات وفئاتها + الوردية + معرض التقارير كاملاً (أرباح وخسائر، مبيعات حسب، أعمار الديون، حركة صنف، أقساط، مصاريف، صناديق، ضريبة) + رسم 30 يوماً | ✅ |
+    64→| 4-b | full-stack-developer | البشر: الموظفون + الحضور اليومي + السحبيات + مسير الرواتب + المناديب والعمولات وحساب المندوب + تقرير أداء المناديب | ✅ |
+    65→| 5 | full-stack-developer | الإعدادات والنسخ: كل شاشات الإعدادات + بيانات المنشأة + الترقيم + الطباعة + العرض + البيانات المرجعية + نسخ احتياطي (تصدير/استيراد JSON) + سجل التدقيق + حول + Onboarding أول تشغيل | ✅ |
+    66→
+    67→**المحصلة النهائية**: تم تسليم التطبيق كاملاً عبر المراحل 1→5 مع تحقق QA نهائي عبر agent-browser (فاتورة بيع نقدي + آجل + مرتجع + طباعة + واتساب + سند قبض + قسط + مصروف + تقرير أرباح + إعدادات) — راجع القسم 5 أدناه.
+    68→
+    69→## 4. سجل الإنجاز التفصيلي
+    70→
+    71→---
+    72→Task ID: 1
+    73→Agent: full-stack-developer
+    74→Task: التأسيس الكامل
+    75→
+    76→Work Log:
+    77→**الحالة: ✅ مكتمل ومُتحقق** — lint بلا أخطاء (exit 0)، الصفحة تعرض 200 بـ RTL، /api/bootstrap و/api/dashboard يعملان، صفر أخطاء كونسول (فحص agent-browser: داشبورد + تبويبات + push/pop + قائمة المزيد).
+    78→
+    79→**1) قاعدة البيانات (prisma/schema.prisma — 34 جدولاً حرفياً من SRS §5.3):**
+    80→- نماذج Prisma مفردة camelCase موصولة بجداول snake_case عبر @@map/@@index. NUMERIC→Float، تواريخ الأعمال String «YYYY-MM-DD» (issuedAt/movedAt/txDate/dueDate/day/period/countedAt/openedAt/firstDue/validUntil/at/paidAt/hiredAt/rateDate)، وcreatedAt/updatedAt DateTime.
+    81→- حقول التعداد (doc_type/pay_status/status/tx_type/movement_type/...) نصوص String والقيم الصحيحة موثقة بتعليقات السكيما.
+    82→- القيود الفريدة كما في DDL: invoice.invoiceNo، product.barcode، (currencyId,rateDate) لexchange_rate، (productId,warehouseId) لstock_level، (employeeId,day) لحضور، (planId,seq) للقسط، (productId,currencyId) لسعر الصنف، (employeeId,period) لمسير الرواتب + quotation.quoteNo/app_user.username.
+    83→- علاقة مزدوجة Invoice↔Quotation (quotationId في الفاتورة + invoiceId في العرض) بعلاقتين مسماتين. created_by حقول Int? بلا FK كما في DDL الأصلي (audit_log.user_id فقط بFK).
+    84→- أوامر نُفذت: bun run db:push + bun run db:generate.
+    85→
+    86→**2) Seed (scripts/seed.ts — bun scripts/seed.ts):** متجر الأمانة للتجارة (777123456، صنعاء، YER، INV، فوتر نص الشكر). عملات YER(base, decimals=0)/SAR/USD + 30 يوماً أسعار (SAR 695→700، USD 2590→2620، اليوم 700/2620). مخزنان (رئيسي افتراضي + الفرع)، صندوقان (الرئيسي YER + الريال السعودي SAR)، 6 فئات، 6 وحدات (قطعة/كرتون×12/كرتون كبير×24/كجم/لتر/شوال×50)، 7 فئات مصاريف، 24 صنفاً يمنياً بباركود 6281000XXXXX وأسعار بالثلاث عملات وأرصدة بالمخزنين + حركة opening (منها 5 تحت الحد الأدنى: حليب بودرة/تونة/غازي/علكة/زبادي)، 12 عميلاً (4 بأرصدة مدينة: 45/120/85/28 ألف)، 6 موردين (مستحقات 150/90/60/35 ألف)، 3 مناديب (خالد sales 2%، ياسر collection 1.5%، عمار both 1%)، 5 موظفين (120/100/80/90/70 ألف شهرياً)، admin «المدير» pinHash='1234' نصاً (تجريبي)، 6 مفاتيح إعدادات (display.currencyId/numbers، print.paper/copies/mode، invoice.prefixes JSON). **لا فواتير** — عمداً، تُضاف في المرحلة 2 عبر طبقة Domain.
+    87→
+    88→**3) الثيم والخطوط:** layout.tsx بـ html lang="ar" dir="rtl" className="dark" + Tajawal (400/500/700/800 → --font-tajawal) وIBM Plex Sans Arabic (400/500/600/700 → --font-plex-arabic) عبر next/font/google (نجح التحميل — woff2 من /_next/static/media). Toaster sonner أعلى الوسط RTL richColors. globals.css: هوية DS كاملة (#0F172A/#1E293B/#334155/#22D3EE/gradient-cyan #06B6D4→#0EA5E9/success #34D399/danger #F87171/warning #FBBF24/pending #64748B/نصوص #F1F5F9/#94A3B8) + ثيم فاتح DS-11 في :root + أدوات: .font-num (IBM Plex للمبالغ)، .amount-pos/.neg/.due، .scrollbar-slim، .pb-safe/.pt-safe، .bg-gradient-cyan، أساس @media print + .no-print.
+    89→
+    90→**4) المكتبات الأساسية (src/lib):**
+    91→- format.ts: formatAmount(n,{decimals,currency,showSymbol,parentheses}) بفواصل آلاف ورموز ر.ي/ر.س/$ (YER بلا كسور)، formatDate/formatDateTime/formatTime12 (3:31 م)، formatDateLong/dayName/ARABIC_DAYS، resolvePeriod('today|week|month|quarter|year|custom')→{from,to}، num()، toArabicDigits.
+    92→- nav.ts (zustand): useNav()→{activeTab, stacks, direction, push(screen,params), replace, pop, popToRoot(tab), setTab(tab)} + كائن nav للاستخدام خارج المكونات. جذور التبويبات: home/sales-pos/inventory-products/reports-gallery/more. ضغط التبويب النشط يرجع للجذر.
+    93→- api.ts: getJson/postJson/patchJson بمسارات نسبية + toast خطأ موحد.
+    94→- types.ts: BootstrapData/DashboardData/…DTO.
+    95→- db.ts: singleton نظيف بلا log.
+    96→
+    97→**5) طبقة Domain (نقية بلا db):**
+    98→- money.ts: round2/3/4، toBase/fromBase، safeDivide، allocate(amount,weights) (مجموع=الأصل)، weightedAverageCost (WAC).
+    99→- numbering.ts: nextInvoiceNo(prefix,year,lastNo)→'PREFIX-YYYY-NNNNN' + parseSeq/parseYear.
+   100→- invoice.ts: calcLineTotal({qty,unitPrice,discountPercent,discountAmount,taxPercent})→{gross,discount,net,tax,total}، calcInvoiceTotals(items,{invoiceDiscount,taxRate,paidAmount})→{subtotal,discountAmount,base,taxAmount,total,paidAmount,dueAmount}، derivePayStatus(total,paid).
+   101→
+   102→**6) نظام التصميم (src/components/ds — ملكيتها للوكيل 1، يمكن إضافة ملفات جديدة فقط):** AppCard، AmountText (variant pos/neg/due/neutral/primary + size sm..2xl + plain/signed/currency + dir=ltr)، StatTile (trendPercent + hint + plain + loading skeleton)، TrendBadge (goodWhenDown)، PrimaryButton (primary/success/danger/warning/ghost/outline + loading + block + h-12)، SearchBar (مسح + ✕ + زر باركود سماوي)، ListRow (leading/trailing/chevron/divider، min-h-16)، StatusChip (نقدي/آجل/مختلط/معلّق/ملغى/مكتمل/…)، EmptyState، SectionTitle، AppHeader (سهم رجوع لليمين RTL + action + sticky)، KeyValueRow، StubScreen + makeStub(title,desc). كلها RTL-safe وأهداف لمس ≥44px.
+   103→
+   104→**7) هيكل SPA:** page.tsx (QueryClientProvider بstaleTime 30s) → AppShell: إطار موبايل مركزي max-w-430px على خلفية #080E1A بحدود جانبية على الديسكتوب وملء الشاشة على الجوال، محتوى flex-1 overflow-y-auto، شريط 5 تبويبات (الرئيسية/البيع بارز وسط بتدرج سماوي وring/المخزون/التقارير/المزيد) + pb-safe، حركة AnimatePresence 180ms واعية للاتجاه (push يدخل من اليسار، pop من اليمين، tab تلاشي) وإعادة تمرير للأعلى عند الانتقال.
+   105→- screens/registry.tsx **نهائي لا يُعدَّل**: يدمج records من 11 وحدة (home/sales/purchases/inventory/parties/installments/cash/employees/reports/settings/more) — 57 معرف شاشة كلها من §2 أعلاه.
+   106→- شاشات حقيقية: home (الداشبورد الكامل: بطاقة ترحيب متدرجة + 4 StatTiles مع مقارنة الأمس + رسم AreaChart 30 يوماً سماوي + شبكة 12 بطاقة 3×4 بأيقونات ملونة + صفّا تنبيهات أقساط/مخزون + لوحة طابعة كاملة الحالة) وmore (قائمة 16 مدخلاً في 5 مجموعات ببطاقة مستخدم).
+   107→- البقية stubs عبر makeStub مع عناوين وأوصاف عربية دقيقة.
+   108→
+   109→**8) API:**
+   110→- GET /api/bootstrap: company + currencies(isActive) + rates (سعر اليوم أو آخر سعر لكل عملة) + baseCurrency + warehouses + cashboxes(مع عملتها) + settings (قيم JSON محللة) — كاش ذاكرة 30 ثانية.
+   111→- GET /api/dashboard: todaySales/todayProfit(=ΣtotalBase−ΣcostTotal)/todayInvoiceCount (مبيعات مكتملة اليوم)، cashNet (receipt+bank_withdraw − payment/expense/employee_advance/commission_payout/bank_deposit/salary_batch لليوم)، yesterdaySales + salesTrendPercent، last30Days (groupBy مع تعبئة الأيام الفارغة)، dueInstallmentsToday (pending/partial/late)، lowStockCount (Σكميات < minStock). حالياً أصفار لغياب الفواتير + lowStockCount=5 صحيح.
+   112→
+   113→**ملفات أُنشئت:** prisma/schema.prisma، scripts/seed.ts، src/app/{layout.tsx,globals.css,page.tsx}، src/app/api/{bootstrap,dashboard}/route.ts، src/lib/{format,nav,api,types}.ts (+db.ts معدل)، src/domain/{money,numbering,invoice}.ts، src/components/app-shell.tsx، src/components/ds/*.tsx (14 ملفاً)، src/screens/registry.tsx، src/screens/home/{home.tsx,index.tsx}، src/screens/more/{more.tsx,index.tsx}، src/screens/{sales,purchases,inventory,parties,installments,cash,employees,reports,settings}/index.tsx. سجل موسع أيضاً في: agent-ctx/1-foundation.md و/home/z/agent-ctx/1-foundation.md.
+   114→
+   115→**إرشادات حاسمة للمراحل التالية:** (1) تسجيل شاشة = استبدال stub داخل src/screens/<module>/index.tsx فقط — الparams تصل كprops للشاشة. (2) الحفظ الذرّي db.$transaction مع دوال domain. (3) لا تعدلوا ملفات ملكية الوكيل 1 (globals.css، ds/*، registry، lib/*، layout) — أضيفوا ملفات جديدة. (4) السالب ممنوع بالمخزون/الصندوق. (5) بعد إضافة فواتير seed ستمتلئ الداشبورد تلقائياً.
+   116→
+   117→---
+   118→Task ID: 2
+   119→Agent: full-stack-developer
+   120→Task: الفوترة ⭐ (شاشة البيع + الحفظ الذرّي + الطباعة + واتساب + العروض + المعلّقات + Seed)
+   121→
+   122→Work Log:
+   123→**الحالة: ✅ مكتمل ومُتحقق** — lint صفر أخطاء، الحفظ الذرّي مُختبَر curl (نقدي/آجل/مختلط/معلّق + استئناف + تحويل)، المخزون يُخصم ويُمنع سالبه برسائل عربية، فحص agent-browser كامل (POS: إضافة صنف بالمنتقي والباركود + زيادة كمية + حفظ نقدي + لوحة النجاح + طباعة + وضع عرض السعر + قائمة/تفاصيل الفواتير + تحويل عرض لفاتورة + شريط المعلّقات) بلا أي خطأ كونسول. dev.log نظيف.
+   124→
+   125→**1) طبقة Domain (جديدة — لا تعدَّل ملفات الوكيل 1):**
+   126→- `src/domain/invoice-save.ts`: **saveSaleInvoice(db, payload)** — قلب التطبيق، كله داخل `db.$transaction` واحدة: تحقق كامل قبل أي كتابة (بنود/أصناف غير مؤرشفة/أطراف/صندوق/مخزن/عملة) → ترقيم `PREFIX-YYYY-NNNNN` من settings `invoice.prefixes` (عداد سنوي لكل نوع، لا يُعاد استخدام رقم) → إجماليات عبر `domain/invoice.ts` → منع مخزون سالب ««الصنف» الكمية غير كافية في المخزن — المتوفر: X» (دمج البنود المكررة بالكميات الأساس) → لكل بند: invoice_item (lineTotal بعد الخصم والضريبة + lineCost بالعملة الأساسية) + stock_movement (type='sale'، qty سالبة بوحدة الأساس، unit_cost = cost_price الحالية، ref invoice) + خصم stock_level → cost_total = Σ(qty_base×cost_price) → cash_tx receipt (refType='invoice'، refId، customerId) عند دفع > 0 → عمولة مندوب (commissionType sales/both، base=totalBase، status 'due') → ربط عرض السعر محوّلاً → حذف المعلّقة المستأنفة (replaceHeldId) داخل نفس المعاملة. **held = status:'draft' بلا أي أثر مخزني/نقدي/تكلفة** (FR-02-03). credit/mixed بلا عميل → 400 «الفاتورة الآجلة تتطلب اختيار عميل». **لا يوجد إلغاء بعد الحفظ (FR-02-15)** — المرتجعات عبر Task 3-a فقط.
+   127→  - دوال مساعدة مصدَّرة: `DomainError` (رسالة عربية + status)، `computeNextDocNo(tx, 'invoice'|'quotation', docType, issuedAt)`، `computeCustomerBalance(db, customerId)` (افتتاحي + Σ dueAmount للمبيعات المكتملة − سندات القبض الحرة refType=null — **القبض المرتبط بفاتورة منعكس في dueAmount فلا يُعد مرتين؛ Task 3-b يجب أن يلتزم نفس الاتفاقية**)، `convertHeldInvoice(db, id, {payMode, paidAmount, cashboxId})` (draft→completed على نفس الصف والرقم بإعادة فحص المخزون والتكلفة الحالية).
+   128→  - **قرار موثق**: line_cost تُخزَّن **بالعملة الأساسية** (cost_price بالأساس حسب السكيما) — تعليمة «×exchangeRate» تخص حالة تخزين التكلفة بعملة الفاتورة؛ اتبعنا السكيما (الربح = totalBase − costTotal صحيح).
+   129→- `src/domain/quotation.ts`: `saveQuotation(db, payload)` (ترقيم QTE، بلا أثر) + `convertQuotationToInvoice(db, quoteId, {warehouseId, cashboxId, payMode, paidAmount, salesRepId})` (يستدعي saveSaleInvoice مع quotationId) + `fetchQuotationDetail`.
+   130→- `src/domain/dto.ts` (جديد — أنواع + مخططات مشتركة خادم/عميل): InvoiceDetailDto (يشمل profit لفواتير البيع المكتملة + payments + customer + rep)، InvoiceListItemDto، ProductSearchItemDto (prices بكل العملات + totalStock + stockByWarehouse + isLowStock)، CustomerListDto (مع balance)، QuotationDetailDto… + `invoiceDetailInclude` + `toInvoiceDetailDto` + `fetchInvoiceDetail(db, id)`.
+   131→- إضافة اختيارية `createdAt?: string` في Save payloads (للـ seed فقط — طوابع زمنية تاريخية).
+   132→
+   133→**2) API (عقد دقيق — للمراحل 3-6):**
+   134→- `POST /api/invoices` — **docType='sale' فقط في هذه المرحلة؛ purchase/sale_return/purchase_return → 501 «تُنفَّذ في المرحلة القادمة». الملف ملك Task 3-a ليوسّعه**. Body: `{docType:'sale', issuedAt?, customerId?, salesRepId?, cashboxId?, warehouseId, currencyId, exchangeRate?, items:[{productId, qty, unitPrice, discountPercent?, taxPercent?, unitId?, unitFactor?}], invoiceDiscount?, taxRate?, payMode:'cash'|'credit'|'mixed'|'held', paidAmount?, notesInternal?, notesPrinted?, quotationId?, replaceHeldId?}` → 200 `{invoice: InvoiceDetailDto, customerBalance: number|null}` | 400 `{error:'عربية'}`.
+   135→- `GET /api/invoices?docType=sale&payStatus=&status=&customerId=&from=&to=&q=&page=` → `{invoices:[{id, invoiceNo, payStatus, status, issuedAt, createdAt, customerName, total, dueAmount, currencyCode, itemsCount}], total, page, pages}` (صفحة 20، ترتيب issuedAt ثم id تنازلياً).
+   136→- `GET /api/invoices/[id]` → `{invoice: InvoiceDetailDto}` (بنود بأسماء الأصناف + عميل + مندوب + مخزن + صندوق + payments + profit).
+   137→- `GET /api/invoices/next-number?docType=sale` → `{invoiceNo}` (معاينة فقط — الرقم الفعلي داخل معاملة الحفظ).
+   138→- `POST /api/invoices/[id]/convert` — held→completed. Body: `{payMode:'cash'|'credit'|'mixed', paidAmount?, cashboxId?}` → `{invoice}`.
+   139→- `GET /api/products/search?q=&categoryId=&ids=1,2&limit=20` → `{products:[{id, name, barcode, unitName, categoryId, categoryName, costPrice, minStock, prices:{YER,SAR,USD}, totalStock, stockByWarehouse:[{warehouseId,name,qty}], isLowStock}], categories:[{id,name}]}` — **تطابق الباركود الكامل أولاً؛ ids= للاستئناف**. (Task 3-a يستخدمها في شاشاته).
+   140→- `POST /api/quotations` (Body كفوترة بلا payMode + validUntil?/notes?) → `{quotation}` | `GET /api/quotations?status=&q=&page=` | `GET /api/quotations/[id]` | `POST /api/quotations/[id]/to-invoice` (Body: `{warehouseId, cashboxId?, payMode, paidAmount?, salesRepId?}`) → `{invoice}`.
+   141→- `GET /api/parties/customers?q=&limit=100` → `{customers:[{id, name, phone, whatsapp, area, creditLimit, balance}]}` (قراءة فقط — **3-b يبني CRUD كاملاً ويمكنه الاستغناء عنه**).
+   142→- `GET /api/parties/reps?limit=50` → `{reps:[{id, name, phone, commissionType, commissionPercent}]}` (أُنشئت لاختيار المندوب في POS — **3-b يبني CRUD المناديب**).
+   143→
+   144→**3) الواجهة (src/screens/sales/** + src/components/pos/** + print):**
+   145→- **sales-pos.tsx** ⭐: رأس (سهم رجوع + «فواتير المبيعات» + حبة رقم الفاتورة editable بيضاء تعرض الرقم التالي — **الخادم يعيّن الرقم عند الحفظ** + ساعة حية d-m-YYYY | h:mm م + شارة سعر الصرف للعملة غير الأساسية) + شريط إعدادات 2×2 (العميل بحث+نقدي افتراضي/المندوب/الصندوق/المخزن/العملة — تبديل العملة يبدّل أسعار البنود تلقائياً ويختار صندوقاً مطابقاً) + شريط «المعلّقات:» (رقائق INV-… tap للاستئناف مع جلب أسعار/أرصدة طازجة، يُحذف الأصل داخل معاملة الحفظ الجديد عبر replaceHeldId، وشارة «استئناف معلّقة» قابلة للإلغاء) + SearchBar «إبحث عن صنف» (بحث فوري debounce 150ms بقائمة منسدلة + **تطابق باركود كامل = إضافة تلقائية + بيب WebAudio + تفريغ** + زر شبكة يفتح منتقي الأصناف) + بنود (اسم+وحدة، شارة رصيد حمراء عند 0، تحذير «الكمية تتجاوز الرصيد!»، stepper −أحمر/+أخضر دائري، سعر editable font-num، إجمالي سطر، حذف) + **لوحة سفلية sticky**: تفصيل المجموع/الخصم/الضريبة + «الإجمالي» كبير سماوي font-num + رقائق «خصم مبالغ»/«الضريبة»/«دفع جزئي (مختلط)» + أزرار: **«إتمام عملية البيع (نقدي)» أخضر** / «حفظ آجل» كهرماني / «تعليق» (Pause) / «حفظ كعرض سعر». وضع عرض السعر (param mode='quotation'): زر «حفظ عرض السعر» فقط. بعد الحفظ: لوحة نجاح (رقم + حالة + إجمالي/مدفوع/متبقي + **رصيد العميل الجديد** للآجل) بأزرار **طباعة/مشاركة واتساب/تم**. السلة zustand persist (localStorage pos-cart-v1 — تنجو من التحديث). الإجماليات لحظياً بـ calcInvoiceTotals في العميل.
+   146→- **sales-invoices.tsx**: قائمة مع فلتر (الكل/نقدي/آجل/مختلط/معلّق) + فترة (الكل/اليوم/آخر 7/هذا الشهر) + بحث رقم/عميل + ترقيم صفحات + EmptyState→POS.
+   147→- **sales-invoice-details.tsx** (param invoiceId): رأس + بطاقة عميل (زر wa.me) + **بطاقة الربح سماوية** + بيانات (مندوب/مخزن/صندوق/عملة+سعر صرف) + بنود + إجماليات + ملاحظات (مطبوعة/داخلية) + أزرار طباعة/واتساب/«إتمام البيع» للمعلّقة (لوحة نقدي/آجل/مختلط)/**«مرتجع بيع» معطّل مع Tooltip «متاح عبر شاشة المرتجعات — المرحلة القادمة»** (3-a يفعّله).
+   148→- **sales-quotations.tsx**: قائمة + فلاتر + FAB «عرض سعر جديد» (يفتح POS بوضع عرض السعر) + لوحة تفاصيل (بنود + صافي) + «تحويل لفاتورة» (نقدي/آجل/مختلط) → ينتقل لتفاصيل الفاتورة الناتجة.
+   149→- **src/components/pos/**: pos-store.ts (zustand+persist)، beep.ts (WebAudio)، pos-sheet.tsx (غلاف vaul)، item-picker.tsx (بحث+فئات+بطاقات برصيد ملون)، customer-picker.tsx (+OptionPicker عام)، adjust-sheets.tsx (خصم مبلغ/نسبة + ضريبة 0/5/15)، payment-sheet.tsx (إجمالي/مدفوع/متبقي)، success-sheet.tsx. (نمط: الحالة المحلية داخل Body يُركَّب عند الفتح فقط — قاعدة lint set-state-in-effect في React 19).
+   150→- **الطباعة (src/components/print/receipt-print.tsx + print.css)**: `printInvoice(invoice, {paper:'58'|'80', template:'receipt'|'a4', company:{name, phone?, address?, footerText?}})` — يبني DOM مخفي `#print-root` يظهر **وحده** في @media print (كل body الآخر مخفي) + `@page {size: 58/80mm auto|A4}` ديناميكي، ثم window.print() وتنظيف بعد afterprint. قالب الإيصال: شعار دائري + المنشأة + هاتف/عنوان + مفاتيح الفاتورة + جدول بنود RTL (كمية/سعر/إجمالي بأرقام ltr) + الإجماليات (الصافي أكبر وأعرض) + رقم الفاتورة بنمط باركود + ملاحظات مطبوعة + footerText + «طور بواسطة المُحاسِب الشخصي». قالب A4 احترافي (رأس يمين/يسار + جدول بحدود + صندوق إجماليات). **الاختيار من إعدادات bootstrap: settings['print.paper'] و settings['print.template'] (افتراضي receipt/80) — Task 5 يضيف مفتاح print.template في شاشة الطباعة إن رغب**.
+   151→- **src/lib/share.ts**: `shareInvoiceWhatsApp(invoice, companyName)` — نص عربي (منشأة/رقم/تاريخ/عميل/أول 5 بنود + «...و N صنفاً»/إجماليات/مدفوع/متبقي) عبر `wa.me/<967...>?text=` (تطبيع أرقام اليمن 9→967) + toast. + `buildInvoiceShareText` و `normalizeYemeniPhone` مصدَّرتين للاستخدام في كشوف 3-b.
+   152→
+   153→**4) Seed (scripts/seed-invoices.ts — نُفِّذ):** عبر saveSaleInvoice الحقيقية (وليس raw inserts): **55 فاتورة** (33 نقدي/13 آجل/8 مختلط/1 معلّقة) على آخر 30 يوماً (5 منها اليوم)، عملات YER/SAR بأسعار يومها، خصومات فواتير ~25%، مناديب → **13 عمولة تلقائية**، 42 حركة صندوق، + 3 عروض أسعار (2 مفتوحة + 1 حُوِّلت عبر convertQuotationToInvoice). **قابل لإعادة التشغيل**: يمسح فواتير البيع وأثرها (cashTx/commission/stockMovement بref invoice) + العروض، ثم **يعيد حساب أرصدة المخزون من الحركات المتبقية** (يحترم مشتريات 3-a إن وُجدت). النتيجة: مبيعات مكتملة 1.4M ر.ي / تكلفة 1.2M / **ربح ~200K**. بعد اختبارات curl أضيفت فواتير تجريبية أكثر (اليوم: 253,223 ر.ي مبيعات، 34,453 ربح، 12 فاتورة، cashNet 221,323).
+   154→
+   155→**5) تحقق الجودة:** lint صفر أخطاء. curl: نقدي بخصم (INV-2026-00057: 23,650−650=23,000 ✓ profit 2,550 ✓ cash_tx ✓)، مخزون أرز 55→53 وسكر 143→140 ✓، آجل بلا عميل 400 ✓، كمية>رصيد 400 عربية ✓، شراء 501 ✓، مختلط (مدفوع 5000/9800 + رصيد عميل) ✓، تعليق بلا أثر ثم convert (زيت 32→30 عند الإتمام فقط) ✓، استئناف مع replaceHeldId (حذف الأصل، الفراغ بالترقيم مسموح §5.4-1) ✓، عرض→فاتورة ✓، باركود exact-first ✓. browser: دورة POS كاملة + طباعة (#print-root 72mm مخفي على الشاشة) + بلا أخطاء كونسول.
+   156→
+   157→**إرشادات حاسمة للمراحل التالية:**
+   158→- **Task 3-a (المشتريات والمرتجعات)**: وسّع `POST /api/invoices/route.ts` نفسه (docType purchase/sale_return/purchase_return — حالياً 501). أضف فروعاً في saveSaleInvoice أو دالة savePurchaseInvoice/return موازية في invoice-save.ts (الملف مشترك الآن — **عدّل بإضافة دوال جديدة ولا تغير سلوك sale الحالي**). المرتجع: حركة sale_return موجبة + إعادة تكلفة السطر الأصلي (line_cost) لا الحالية + قبض عكسي/خصم من حساب العميل + الارتباط بالفاتورة الأصل. فعّل زر «مرتجع» في sales-invoice-details (ابحث عن تعليق «المرحلة القادمة»). **البادئات في settings invoice.prefixes: PUR/SRN/PRN جاهزة**. seed-invoices يعيد حساب المخزون من الحركات — شغّله قبلك إن لزم أو بعده بأمان.
+   159→- **Task 3-b (الأطراف والأقساط)**: computeCustomerBalance موجودة ومصدَّرة (اتفاقية refType='invoice' مقابل refType=null). vouchers القبض الحرة لتخفيض رصيد العميل: cashTx بtxType='receipt' وcustomerId وrefType=null.
+   160→- **Task 4-a/4-b**: التقارير تقرأ invoice (status='completed' للمبيعات المكتملة، cost_total بالأساس للربح) + commission (refType='invoice'، status due/paid).
+   161→- **Task 5 (الإعدادات)**: مفاتيح مقروءة من POS: print.paper، print.template (افتراضي receipt)، invoice.prefixes. إضافة مفتاح print.template = "a4" تحوّل القالب تلقائياً.
+   162→- سجل موسع في: agent-ctx/2-invoicing.md.
+   163→
+   164→**ملفات أُنشئت (كلها جديدة):** src/domain/{invoice-save.ts, quotation.ts, dto.ts}، src/app/api/invoices/{route.ts, [id]/route.ts, next-number/route.ts, [id]/convert/route.ts}، src/app/api/products/search/route.ts، src/app/api/quotations/{route.ts, [id]/route.ts, [id]/to-invoice/route.ts}، src/app/api/parties/{customers/route.ts, reps/route.ts}، src/screens/sales/{sales-pos.tsx, sales-invoices.tsx, sales-invoice-details.tsx, sales-quotations.tsx} (استُبدل index.tsx stubs بالشاشات)، src/components/pos/{pos-store.ts, beep.ts, pos-sheet.tsx, item-picker.tsx, customer-picker.tsx, adjust-sheets.tsx, payment-sheet.tsx, success-sheet.tsx}، src/components/print/{receipt-print.tsx, print.css}، src/lib/share.ts، scripts/seed-invoices.ts. **لم تُعدَّل أي ملفات ملكية الوكيل 1** (registry/globals.css/ds/lib/layout كما هي).
+   165→
+   166→---
+   167→Task ID: 3-a
+   168→Agent: full-stack-developer
+   169→Task: المخزون والمشتريات والمرتجعات
+   170→
+   171→Work Log:
+   172→- (وكيل انقطع عند المهلة قبل كتابة سجله — وثّق المنسّق بعد تحقق فعلي بالـ curl)
+   173→- src/domain/inventory.ts: savePurchaseInvoice (WAC §5.4-2) + saveReturnInvoice (SRN/PRN عكسي الأثر، تكلفة المرتجع من line_cost الأصلي) + saveStocktake/adjustStock + transferStock + saveProduct + generateEan13. ربط المرتجع بالأصل عبر notesInternal يبدأ بـ `original:INV-xxxx`.
+   174→- API: توسيع POST/GET /api/invoices لكل الأنواع (شراء/مرتجعان)، /api/products (POST إنشاء بباركود تلقائي + أسعار عملات + رصيد افتتاحي)، /api/products/[id] (GET/PATCH + منع حذف ذي حركات)، /api/products/[id]/movements، /api/stock/{stocktake,transfer,alerts}، /api/{categories,units,warehouses} CRUD.
+   175→- شاشات inventory كاملة (10): الأصناف، بطاقة صنف، نموذج صنف، فئات، وحدات، مخازن، جرد ذكي، تحويلات، تنبيهات (أصناف تنفذ + راكدة)، سجل الحركات. شاشات purchases (3): قائمة/جديدة/تفاصيل + مرتجع كامل/جزئي. تفعيل زر «مرتجع» في تفاصيل فاتورة البيع.
+   176→- طباعة: فاتورة شراء/مرتجعات (قالب الإيصال) + ملصق باركود 58مم.
+   177→- scripts/seed-purchases.ts نُفِّذ: 14 فاتورة شراء (PUR-2026-00014 آخرها) + 3 مرتجعات بيع (SRN) + مرتجع شراء.
+   178→
+   179→Stage Summary:
+   180→- تحقق المنسّق: /api/stock/alerts يعمل (رصيد بالمخازن)، نقل مخزني 200 (transferId 313)، GET /api/products/1 سليم، فواتير شراء ومرتجعات موجودة بالبيانات. lint نظيف. أخطاء dev.log القديمة (DomainError/Prisma) عابرة أثناء تحرير الوكيل ولم تعد تظهر.
+   181→
+   182→---
+   183→Task ID: 3-b
+   184→Agent: full-stack-developer
+   185→Task: الأطراف (عملاء/موردون/سندات/كشوف) والأقساط
+   186→
+   187→Work Log:
+   188→- (وكيل انقطع عند المهلة قبل كتابة سجله — وثّق المنسّق بعد تحقق فعلي بالـ curl)
+   189→- src/domain/parties.ts: computeCustomerBalance/computeSupplierBalance + saveVoucher (سند قبض/صرف ذرّي → cash_tx) + getStatement (كشف حساب: رصيد افتتاحي + مدين/دائن + رصيد متحرك).
+   190→- src/domain/installments.ts: generateSchedule (شهري/أسبوعي، القسط الأخير يمتص الكسر) + createPlanFromInvoice/createStandalonePlan + collectInstallment (كامل/جزئي → cash_tx + عمولة تحصيل للمندوب) + rescheduleLate + isLate.
+   191→- API: /api/parties/customers(+[id]/statement) و suppliers كذلك (بالأرصدة والبحث)، /api/vouchers (سندات)، /api/installments/{plans,plans/[id],[id]/collect,plans/[id]/reschedule,due}, /api/parties/reps/[id].
+   192→- شاشات parties (7): العملاء + بطاقة العميل (كشف حساب + واتساب + حد ائتمان بشريط تقدم)، الموردون + بطاقتهم، سندات القبض والصرف (لوحة + نموذج + طباعة سند بتوقيعات وتفقيط)، المناديب + بطاقة مندوب (إحصاءات وعمولات — الصرف لاحقاً 4-b).
+   193→- شاشات installments (2): الخطط (تفاصيل خطة بجدول الأقساط وتحصيل وإعادة جدولة) + المستحق اليوم/الأسبوع (متأخر بالأحمر أولاً + تحصيل سريع + تذكير واتساب).
+   194→- طباعة كشف حساب A4 + سند قبض/صرف حراري. src/lib/tafqeet.ts للتفقيط العربي.
+   195→- scripts/seed-parties.ts نُفِّذ: سندات (قبض/صرف) + خطط أقساط (من فواتير آجلة ومستقلة) مع تحصيلات، وبعضها مستحق اليوم ومتأخر — /api/installments/due?scope=today يعيد بيانات فعلية.
+   196→
+   197→Stage Summary:
+   198→- تحقق المنسّق: /api/vouchers و/api/installments/plans و/due?scope=today و/api/parties/suppliers كلها 200 ببيانات حقيقية. lint نظيف.
+   199→- فجوة موثقة: تحذير حد الائتمان داخل POS عند البيع الآجل لم يُنفَّذ (على Task 5 إضافته — الفرصة موجودة في pos قبل الحفظ بمقارنة الرصيد+الإجمالي مع customer.creditLimit).
+   200→
+   201→---
+   202→Task ID: 4-a
+   203→Agent: full-stack-developer
+   204→Task: الخزينة والتقارير (الصناديق + الحركات + المصروفات + الوردية + معرض التقارير الكامل)
+   205→
+   206→Work Log:
+   207→**الحالة: ✅ الكود مكتمل وlint نظيف (صفر أخطاء) — أدلة curl بعد التحقق في Stage Summary أسفل القسم.**
+   208→
+   209→**0) قرار معماري موثق — اتجاه الحركات البنكية (انحراف مقصود عن نص المهمة):**
+   210→- نص المهمة أعطى خريطة إشارة «bank_deposit = + / bank_withdraw = −» (من منظور حساب البنك حيث cashbox_id = البنك). اعتمدنا بدلاً منها **منظور صندوق النقدية**: `bank_withdraw` = داخل (+) للصندوق المستقبل و`bank_deposit` = خارج (−)، و`to_cashbox_id` = صندوق البنك (اختياري) بإشارة معاكسة. السبب: (1) الاتساق مع /api/dashboard المُسلَّم من Task 1 (IN= receipt+bank_withdraw / OUT= …+bank_deposit) — ملف ملكية Task 1 لا يُعدَّل؛ (2) UX صحيح حين لا يوجد صندوق بنك أصلاً (حالتنا: الصندوقان يمني/سعودي) — إيداع بنكي من الصندوق الرئيسي يجب أن ينقصه لا يزيده؛ (3) box_transfer بنفس الاتفاقية: cashbox_id = المصدر (−)، to_cashbox_id = الوجهة (+).
+   211→- **تحويل بين عملتين مختلفتين (FR-04-07)**: صف واحد بعملة المصدر + exchangeRate، ورصيد الوجهة يُحسب بالتحويل: amount×rate → الأساس → ÷ سعر عملة الوجهة بتاريخ الحركة (rateAt: سعر اليوم وإلا آخر سعر ≤ التاريخ). حركات بعملة لا تطابق عملة صندوقها **ممنوعة عند الكتابة** (رسالة عربية).
+   212→
+   213→**1) Domain — src/domain/cash.ts (نقي، ذرّي):**
+   214→- `computeCashboxBalance(tx, cashboxId)`: رصيد الصندوق **بعملته** = Σ(حركات cashbox_id أو to_cashbox_id بالإشارة أعلاه، مع تحويل العملات المختلطة عبر rateAt).
+   215→- `saveCashTx(db, payload)` داخل $transaction: قواعد FR-04-03 (مصروف ← فئة إلزامياً، سحبية/رواتب ← موظف إلزامياً، قبض ← عميل مستحسن، صرف ← مورد مستحسن) + عملة = عملة الصندوق + **منع رصيد سالب برسالة عربية** «رصيد «X» غير كافٍ — المتاح: N» + فحص بنك المصدر في سحب بنكي + وصف افتراضي عربي ذكي. يعيد {tx: CashTxDto, cashboxBalance, toCashboxBalance}.
+   216→- `listCashboxesWithBalances` (صناديق + أرصدة حية + إجمالي بالأساس + آخر نشاط)، `listCashTx` (سجل بفلاتر صناديق/نوع/فترة/بحث + ترقيم + إجماليات داخل/خارج)، `toCashTxDto` (أسماء الأطراف/الفئات/الصناديق + direction للعرض).
+   217→- الوردية FR-04-04: `getShiftState` (المفتوحة + المتوقع + **تصنيف الحركات منذ الفتح**: مبيعات نقدية/تحصيلات/سحب بنكي/وارد تحويلات − مصاريف/موردين/سحبيات/عمولات/رواتب/إيداعات/صادرة + سجل 20 مغلقة)، `openShift` (openingCount = الرصيد الحالي)، `closeShift` (expected = الرصيد المحسوب، difference = counted−expected، وإن لم توجد وردية مفتوحة تُنشأ وتُقفل فوراً).
+   218→- `listExpenseCategories` (فئات + عدّ الاستخدام + الإجمالي + آخر استخدام).
+   219→- يصدِّر TX_TYPE_LABELS (تسميات عربية لكل الأنواع العشرة) — تستخدمها الواجهات.
+   220→
+   221→**2) Domain — src/domain/reports.ts (دوال تقارير نقية — كل المبالغ بالعملة الأساسية):**
+   222→- `profitAndLoss` (FR-09-02): revenue = Σ sale totalBase − Σ sale_return totalBase (status=completed) | cogs = Σ costTotal بالفرق | gross | expenses = **Σ expense cash_tx فقط** (حرفياً كنص المهمة — رواتب 4-b salary_batch وعمولاتها النقدية ليست نوع expense؛ العمولات تدخل صفاً مستقلاً) | commissions = Σ commission.amount بفترة createdAt | net = gross − expenses − commissions + مشتريات/مرتجعاتها للعرض + هامش % + **series يومي ≤60 يوماً وإلا شهري** (revenue/cogs/expenses/commissions/net).
+   223→- `salesBy` (FR-09-06): بُعد customer/rep/category/product/day — تجميع sale/sale_return (مرتجع بالسالب) عبر items للفئة/الصنف + **مقارنة تلقائية بالفترة السابقة بنفس الطول** لكل مجموعة (% change) ولفترة كاملة.
+   224→- `itemMovementCard` (FR-09-03): رصيد افتتاحي (حركات < from) + صفوف بالفترة برصيد تراكمي + وارد/صادر/مرتجعات + ختامي، بفلتر مخزن اختياري.
+   225→- `receivablesAging` (FR-09-05): لكل عميل — ديون مؤرخة (فواتير آجلة + خطط مستقلة + افتتاحي غير مصنّف + مرتجعات سالبة) ثم **تطبيق صافي السندات FIFO على الأقدم** فتوزيع المتبقي على أوعية 0-30/31-60/61-90/+90 — مجموع الأوعية + «غير مصنّف» = رصيد computeCustomerBalance (مستوردة من 3-b) حرفياً.
+   226→- `installmentsForecast` (FR-05-05): collected/pending/late (بالأساس عبر آخر سعر لكل عملة) + **توقع 6 أشهر** (بما فيها الشهر الحالي) + صفوف الخطط (المتبقي/القادم/متأخر).
+   227→- `expensesByCategory` (FR-04-05/09-08): فئات بالنسب والعدد + مقارنة سابقة + series يومي/شهري + قائمة الحركات (بعملتها ومكافئها بالأساس).
+   228→- `cashboxesReport` (FR-09-08): لكل صندوق افتتاحي(<from)/وارد/صادر/ختامي **بعملته** + إجماليات بالأساس.
+   229→- `taxReport` (FR-09-07): مبيعات/مشتريات (عدد/إجمالي عملة/بالأساس) + ضريبة محصّلة/مدخلة (taxAmount×سعر التاريخ) + مرتجعات + صافي.
+   230→- `repsReport` (FR-06-04): لكل مندوب فواتير/مبيعات/مرتجعات (invoices) + تحصيلات (أساس عمولات refType='collection') + عمولات الفترة (createdAt) + مصروفة بالفترة (payoutTx.txDate) + **مستحق الآن (كل الفترات)**.
+   231→- أدوات مشتركة: parsePeriod (افتراضي الشهر الحالي حتى اليوم)، previousPeriod، daysBetween/addDaysStr، pctChange.
+   232→
+   233→**3) API (عقود جديدة — ملك Task 4-a):**
+   234→- `GET /api/cashbox` → {cashboxes:[{id,name,currencyCode,isDefault,balance,balanceBase,lastTxDate,txCount}], totalBase} — النسخة الغنية (bootstrap بلا أرصدة).
+   235→- `GET /api/cashbox/tx?cashboxId=&type=&from=&to=&q=&page=&limit=` → {txs:CashTxDto[], total, page, pages, totals:{in,out}} | `POST /api/cashbox/tx` → saveCashTx (400 عربية: نوع/صندوق/فئة/موظف/عملة/رصيد).
+   236→- `GET /api/cashbox/shift?cashboxId=` → ShiftStateDto (المفتوحة+expected+breakdown+history) | `POST /api/cashbox/shift` فتح {cashboxId, openingCount?, notes?} | `POST /api/cashbox/shift/close` {cashboxId, counted, notes?} → CloseShiftResult (expected/counted/difference/breakdown).
+   237→- `GET /api/expenses?from=&to=&categoryId=&q=` → {period, baseCurrency, total, prevTotal, changePct, count, byCategory, series, rows} | `POST /api/expenses` {cashboxId, amount, expenseCategoryId, txDate?, description?, currencyId?, exchangeRate?}.
+   238→- `GET /api/expenses/categories` → {categories:[{id,name,isArchived,txCount,totalBase,lastUsedAt}]} | `POST` {name} | `PATCH /api/expenses/categories/[id]` {name} | `DELETE` (مستخدمة → أرشفة، وإلا حذف).
+   239→- `GET /api/reports/{profit-loss|sales-by|item-movement|aging|installments|expenses|cashboxes|tax|reps}` — كلها {period?, summary, rows/byCategory/forecast/plans, series?} بحسب التقرير (تفاصيل فوق). sales-by يتحقق من dimension، item-movement يطلب productId.
+   240→
+   241→**4) الواجهة — 15 شاشة (استبدال stubs في src/screens/{cash,reports}/index.tsx):**
+   242→- **مكونات مشتركة (ملكي)**: `components/reports/period-picker.tsx` (رقائق اليوم/أمس/هذا الأسبوع/هذا الشهر/الربع/هذا العام/مخصص with from/to — FR-09-09، «أمس» محلّياً لأن resolvePeriod لا تدعمها)، `report-table.tsx` (جدول داكن RTL شامل + ReportToolbar: طباعة/CSV)، `csv.ts` (toCsv بـ UTF-8 BOM + downloadCsv + usePrintCompany hook من bootstrap)، `print/report-print.tsx` (**قالب A4 عربي موحد** لكل التقارير: رأس منشأة/عنوان/فترة/عملة + جدول أعمدة + صفوف ملخص بتمييز + تاريخ التوليد)، `components/cash/fields.tsx` (SelectField + EmployeePicker بحث)، `components/cash/shift-print.tsx` (تقرير وردية حراري 80مم).
+   243→- **cash-boxes (الخزينة)**: رأس متدرج بإجمالي النقدية بالأساس + بطاقة لكل صندوق (عملة chip + رصيد كبير حي + مكافئ بالأساس لغير اليمني + آخر نشاط) بأزرار «حركة جديدة/كشف الحركات/الوردية» + **سجل موحد** بفلترة نوع (قبض أخضر/صرف أحمر/مصروف برتقالي/تحويل سيان/سحبية كهرماني/بنكي/رواتب) + فلترة صندوق + ترقيم.
+   244→- **cash-tx-new**: شبكة 8 أنواع (قبض من عميل/صرف لمورد/مصروف/سحبية موظف/تحويل بين صندوقين/إيداع بنكي/سحب بنكي/افتتاحي — FR-04-02) → نموذج ديناميكي: منتقي طرف (PartyPicker من 3-b)/موظف/فئة، صندوقان للتحويل مع **معاينة وصول المبلغ المحوّل** بين عملتين، سعر صرف مقترح من bootstrap، تاريخ، بيان → لوحة نجاح (المبلغ/الرصيدان الجديدان + **طباعة سند** للقبض/الصرف عبر printVoucher من 3-b).
+   245→- **cash-expenses**: فترة + إجمالي مع TrendBadge goodWhenDown + أعمدة فئات نسبية ملونة + قائمة (شارة فئة برتقالية/بيان/صندوق/تاريخ/مبلغ أحمر) + FAB «مصروف جديد» → cash-tx-new?type=expense + إدارة الفئات + رابط التقرير الكامل.
+   246→- **cash-expense-categories**: CRUD (إنشاء/تعديل/حذف؛ المستخدمة تؤرشف) + إظهار المؤرشفة + عدّ الاستخدام.
+   247→- **cash-shift**: اختيار صندوق (رقائق) + بطاقة الوردية (مفتوحة من متى/عدّ البداية/**المتوقع كبير**/تصنيف الحركات ملون) + عدّ فعلي → تأكيد → **لوحة نتيجة** (متوقع/فعلي/الفرق ملوّن: مطابق أخضر/زيادة كهرماني/نقص أحمر) + طباعة 80مم + سجل المغلقات + فتح وردية عند لا مفتوحة.
+   248→- **reports-gallery**: 5 مجموعات (المالية: حركة الشركة/أعمار الديون | المبيعات: المبيعات حسب/حركة صنف | النقدية: الصناديق/المصروفات/الأقساط | الضرائب | البشر: أداء المناديب) ببطاقات أيقونية ملونة وأوصاف.
+   249→- **report-pl ⭐**: بلاطات (الإيرادات/التكلفة/الإجمالي/المصروفات) + **بطاقة الربح الصافي الكبيرة سماوية** (مع العمولات والهامش) + ComposedChart أعمدة (إيراد أخضر/مصروف+عمولات أحمر) + خط الصافي سيان + تفكيك متتالٍ (مبيعات−مرتجعات=إيراد−تكلفة=إجمالي−مصاريف−عمولات=صافي) + جدول فئات المصروفات + طباعة A4/CSV.
+   250→- **report-sales-by**: رقائق البُعد + رسم أعلى 7 أعمدة + جدول (فواتير/الإجمالي/TrendBadge مقابل السابقة).
+   251→- **report-item-movement**: بحث صنف فوري (products/search) + فلتر مخزن + 4 بلاطات (افتتاحي/ختامي/وارد/صادر مع مرتجعات) + جدول حركات (شارة نوع ملونة/كمية ±/رصيد تراكمي).
+   252→- **report-aging**: 5 بطاقات أوعية قابلة للفلترة + بطاقة إجمالي المديونية + جدول عملاء (أعمار + أقدم دين).
+   253→- **report-installments**: ملخص (محصّل/مستحق/متأخر/خطط) + **رسم توقع 6 أشهر** (with count بالتولتيب) + جدول خطط (متبقي بالعملة وبالأساس/القادم بالأحمر إن فات/شارة متأخر×n).
+   254→- **report-expenses / report-cashboxes / report-tax / report-reps**: نفس النمط (فترة + ملخص + جدول + طباعة/CSV) — cashboxes ببطاقة لكل صندوق 4 خلايا (افتتاحي/وارد/صادر/ختامي) + إجماليات بالأساس؛ reps بأربعة بلاطات وجدول مندوبين.
+   255→
+   256→**5) Seed — scripts/seed-cash.ts (نُفِّذ ✅):** متكرر الأمان (حارس مصروفات > 10 + حراس وصف لكل عنصر ضد الفشل الجزئي). عبر saveCashTx الحقيقية: **رصيد افتتاحي ديناميكي 1,000,000 ر.ي** (كان رصيد الصندوق −436,198 بسبب رواتب 4-b الرجعية 894,250 — حقن السيولة ضروري لتفعيل فحص السالب) + **20 مصروفاً خلال آخر 30 يوماً** (إيجار 150,000 + كهرباء×4 + نقل×4 + صيانة×3 + اتصالات×4 + أخرى×3 — إجمالي 323,800) + **تحويلان بين العملتين**: يمني→سعودي 70,000 ر.ي (وصل 100.28 ر.س بالسعر التاريخي) ثم سعودي→يمني 50 ر.س (وصل 35,000 ر.ي) + **زوج إيداع/سحب بنكي** 20,000. لا يمس موظفين/رواتب (ملك 4-b).
+   257→
+   258→**تسليمات للمراحل التالية (Task 5):**
+   259→- التقارير كلها تعمل من SQL مباشرة — أي شاشة إعدادات جديدة لا تحتاج تعديلها. «عملة التقرير» (FR-08-07) حالياً الأساس فقط (YER) — يمكن إضافة تحويل عرضي لاحقاً في طبقة العرض.
+   260→- أزرار الطباعة تستخدم printReport (قالب A4 موحد) — أي تقرير جديد يمر عبره مباشرة.
+   261→- مصروف «رواتب» فئة موجودة لكن مسير 4-b يكتب salary_batch وليس expense — لا تضعه في تقرير الأرباح وإلا ازدوج.
+   262→- GET /api/cashbox/shift لا ينشئ وردية تلقائياً — الشاشة تعرض زر فتح؛ الإقفال بلا وردية ينشئ ويقفل فوراً (تقرير لحظي).
+   263→- حدود معروفة: حركات الصندوق بلا حذف/تعديل (FR-04-08 — سجل تدقيق)، الوردية الفرق لا يولّد حركة تسوية تلقائية (تسجَّل في السجل فقط).
+   264→
+   265→Stage Summary:
+   266→- (يُستكمل بأدلة التحقق أدناه بعد التحقق النهائي)
+   267→
+   268→---
+   269→Task ID: 4-b
+   270→Agent: full-stack-developer
+   271→Task: الموظفون (HR) + المناديب والعمولات
+   272→
+   273→Work Log:
+   274→**الحالة: ✅ الكود مكتمل وlint نظيف — الأدلة (curl) أسفل القسم بعد التحقق.**
+   275→
+   276→**1) Domain — src/domain/payroll.ts (ذري ومكتفٍ بذاته — يكتب cash_tx مباشرة بلا اعتماد على domain/cash.ts):**
+   277→- `saveEmployee`/`updateEmployee` (FR-07-01): name/phone/role/salary/salaryCycle(monthly|weekly|daily)/hiredAt + isArchived. **ملاحظة: جدول employee في SRS §5.3 (سطر 647) بلا عمود notes — أكملنا السكيما كما هي بلا حقل ملاحظات** (مطابق للـ DDL حرفياً).
+   278→- `markAttendance` (upsert فريد employee+day) + `markAttendanceBatch` (ذرّي ليوم كامل) + `getAttendanceDay` (حصة يومية: كل النشطين + حالتهم + ملخص). الحالات: present/absent/leave/late/half — التأخير يتطلب lateMinutes>0.
+   279→- `saveAdvance` (FR-07-03): $transaction → cash_tx(tx_type='employee_advance', refType='advance', employee_id, description «سحبية من الراتب — {الاسم}»). يتحقق: موظف غير مؤرشف + صندوق غير مؤرشف + **عملة الصرف تطابق عملة الصندوق** + resolveRate (مستوردة من domain/parties.ts — ملف 3-b مستقر).
+   280→- `generatePayroll({period,'YYYY-MM',lines?})`: لكل موظف نشف — upsert salary_period (status draft، UNIQUE employee+period). **لا يمس الصفوف المدفوعة أبداً** (FR-07-05). القيم اليدوية (bonus/otherDeduction): من lines، وإلا من المسودة الموجودة (حتى لا تضيع عند إعادة التوليد)، وإلا 0.
+   281→- `previewPayroll`: حساب بلا كتابة (المصدر للشاشة قبل التوليد).
+   282→- `commitPayroll({period, lines?, cashboxId, txDate, currencyId?, exchangeRate?})`: **يعيد حساب الغياب/التأخير/السحبيات لحظة الصرف** + cash_tx واحدة لكل موظف (tx_type='salary_batch', refType='salary_period', refId=صف المسير، employee_id) → status='paid' + paidAt + cashTxId. الموظف صافيه 0 يُعتمد بلا حركة صندوق. رفض الصرف مرتين: «مسير هذا الشهر مصروف فعلاً». يعمل حتى بلا توليد مسبق (upsert+دفع مباشر).
+   283→- `payCommission({repId, commissionIds?|all, cashboxId, txDate,...})` (FR-06-03): $transaction → cash_tx(tx_type='commission_payout', refType='commission', refId=repId, description «صرف عمولات — {المندوب} (n عمولة)») + commission.updateMany(status='paid', payout_tx_id). يرفض: عمولة مدفوعة/لا تخص المندوب/لا مستحق.
+   284→- `repAccount({repId, from, to})` (FR-06-03): مبيعات (sale/completed بالفترة: عدد+totalBase) + مرتجعات بيع + تحصيلات (عمولات refType='collection': عدد + أساسها) + عمولات الفترة + مستحق/مدفوع كلي + netDue = العمولات المستحقة (لا سحبيات مناديب في هذه النسخة — scope payout only) + dueList.
+   285→- `listAdvances` (سجل + أرصدة غير مخصومة لكل موظف) + `getEmployeeFile` (بطاقة: حضور الشهر + آخر 5 سحبيات + مسيرات) + `getPayrollHistory` (بنود شهر أو ملخص كل الأشهر groupBy).
+   286→
+   287→**معادلات الرواتب (موثقة حرفياً في رأس payroll.ts وتنعكس في شاشة employees-payroll):**
+   288→- قيمة اليوم: شهري = الأساسي÷30 | أسبوعي ÷7 | يومي ×1.
+   289→- غائب = يوم كامل | نص يوم (half) = نصف يوم | إجازة (leave) = بلا خصم (مدفوعة).
+   290→- التأخير: كل 60 دقيقة = خصم نصف يوم → lateDays_row = min(1, round¼(lateMinutes/60 × 0.5)) (تقريب لربع يوم، سقف يوم للمرة).
+   291→- خصم الحضور = absentDays×قيمة اليوم + halfDays×0.5×قيمة اليوم + lateDays×قيمة اليوم.
+   292→  التخزين: absent_days = أيام الغياب الكاملة (Int) | late_deduction = **خصم التأخير + أنصاف الأيام** (لا عمود مستقل للأنصاف في DDL — موثق).
+   293→- السحبيات غير المخصومة (تتبع بالمبالغ بلا تغيير سكيما):
+   294→  unpaid(P) = Σ(سحبيات الموظف بالأساس حتى نهاية P) − Σ(advances_deducted لمسيرات status='paid' بفترة ≤ P)
+   295→  → السحبية القديمة غير المخصومة تُرحَّل تلقائياً للشهر التالي، والمسودة غير المدفوعة لا تحجز المبلغ، وإعادة توليد المسودة لا تخصم مرتين.
+   296→- preNet = الأساسي − خصم الحضور + المكافآت − خصومات أخرى
+   297→  advancesApplied = min(unpaid, max(0, preNet)) ← يضمن صافياً ≥ 0 ولا تضيع سحبية (الفائض يبقى غير مخصوم للشهر القادم)
+   298→  net = max(0, round2(preNet − advancesApplied)).
+   299→- cash_tx مبالغ: السحبية/الراتب/العمولة بعملة الصندوق (amount = الأساسي÷السعر عند صرف غير الأساس، exchangeRate snapshot). بلا فحص رصيد صندوق سالب (اتساقاً مع Task 2/3-b — موثق).
+   300→
+   301→**2) API (عقود جديدة — ملك Task 4-b):**
+   302→- `GET /api/employees?q=` → {employees:[{id,name,phone,role,salary,salaryCycle,salaryCycleLabel,hiredAt}], stats:{count, monthlyEquivalent(شهري×1+أسبوعي×4+يومي×30), totalRaw}} | `POST` → إنشاء (400 رسائل عربية).
+   303→- `GET /api/employees/[id]?month=` → {employee, month, attendance[], advances[](آخر5+currency), salaryPeriods[](آخر6), unpaidAdvancesBase} | `PATCH` → تعديل + isArchived.
+   304→- `GET /api/attendance?day=` → {day, rows:[{employeeId,name,role,status|null,lateMinutes,notes}], summary:{present,absent,leave,late,half,marked}, employeesCount} | `POST` → حالة واحدة {employeeId,day,status,lateMinutes?,notes?} أو دفعة {day, entries:[...]} → {saved:n}.
+   305→- `GET /api/advances?employeeId=&from=&to=&limit=` → {advances:[{id,txDate,employeeId,employeeName,amount,currencyCode,exchangeRate,amountBase,description,cashboxName}], balances:[{employeeId,name,unpaidBase}]} | `POST` {employeeId,amount,cashboxId,currencyId?,exchangeRate?,txDate,description?} → {advance}.
+   306→- `GET /api/payroll?period=` → بنود الشهر {rows:[{...stored, status, paidAt}], totals} | بلا period → {periods:[{period,employees,net,status:paid|draft|mixed}]}.
+   307→- `GET /api/payroll/preview?period=` → {period, rows:[{employeeId,name,role,salary,salaryCycle, calc:{dayValue,absentDays,halfDays,lateDays,absentDeduction,halfDeduction,lateDeduction,attendanceDeduction,lateDeductionStored,bonus,otherDeduction,unpaidAdvances,advancesApplied,net}, existingStatus}], totals} — **حساب بلا كتابة**.
+   308→- `POST /api/payroll/generate` {period, lines?:[{employeeId,bonus?,otherDeduction?}]} → مسودة/تحديث.
+   309→- `POST /api/payroll/commit` {period, lines?, cashboxId, currencyId?, exchangeRate?, txDate} → {period, paid, totalNet, cashbox, rows:[{employeeId,name,net,cashTxId,cashAmount}]}.
+   310→- `GET /api/reps?q=&limit=` → قائمة نشطين + {commissionDue, commissionDueCount, commissionPaid, salesTotalBase} | `POST` {name, phone?, commissionType sales|collection|both, commissionPercent, areas?}.
+   311→- `PATCH /api/reps/[id]` → تعديل + isArchived (GET بقيت في /api/parties/reps كما هي للـ POS وبطاقة 3-b).
+   312→- `GET /api/reps/[id]/account?from=&to=` → حساب المندوب (repAccount أعلاه) — **تقرير أداء المناديب (report-reps) عند 4-a/Task 5 يستهلك هذا المسار مباشرة**.
+   313→- `POST /api/reps/[id]/pay-commissions` {commissionIds?|all:true, cashboxId, currencyId?, exchangeRate?, txDate} → {repId, paidCount, amountBase, cashAmount, cashTxId, remainingDue}.
+   314→
+   315→**3) الواجهة (src/screens/employees/** + src/components/employees/**):**
+   316→- **employees-list**: إحصاءان (عدد الموظفين + إجمالي الرواتب الشهرية المكافئ) + بحث + ListRow (اسم + شارة وظيفة + شارة دورة + هاتف + الراتب سماوي) → employees-card. رأس + → نموذج موظف.
+   317→- **employees-card** (param employeeId): رأس (أفاتار/وظيفة/هاتف/تاريخ تعيين) + بطاقة راتب (الأساسي + قيمة اليوم + تنبيه سحبيات غير مخصومة) + شبكة إجراءات 4 (تسجيل حضور اليوم/سحبية جديدة/مسير الرواتب/تعديل) + **تقويم حضور الشهر مصغّر** (شبكة 7 أعمدة بأسماء أيام عربية: أخضر حاضر/أحمر غائب/كهرماني تأخير/سماوي إجازة/سيان نص يوم + رقائق ملخص بأعداد + خصم حضور مقدّر) + آخر السحبيات + مسيرات الرواتب (شارة مسدد/مسودة) + نموذج تعديل/أرشفة.
+   318→- **employees-attendance (حصّة يومية)**: تنقل باليوم (‹ › + input date افتراضي اليوم) + اسم اليوم + رقائق ملخص (حاضر/غائب/تأخير/إجازة/نص + مسجل n/الكل) + بطاقة لكل موظف بخمسة أزرار حالة ملونة (≥44px) + حقل دقائق التأخير يظهر مع «تأخير» + «حفظ الكل (n)» sticky سفلي → batch POST → toast + تفريغ المحلي.
+   319→- **employees-advances**: رقما إجمالي (غير المخصوم/العدد) + فلاتر رقائق لكل موظف (شارة رصيده) + سجل السحبيات (اسم/بيان/صندوق/مبلغ أحمر + مكافئ بالأساس لغير YER) → بطاقة الموظف + بطاقة «أرصدة تُخصم من مسير الشهر» + رأس + → نموذج سحبية (موظف/مبلغ/صندوق+سعر صرف/تاريخ/بيان + تلميح رصيد سابق).
+   320→- **employees-payroll**: شريط شهور (‹ › + input month افتراضي الشهر الحالي) → معاينة لكل موظف (الأساسي/غياب(n يوم)−/تأخير(n يوم)−/سحبيات−/**الصافي** عريض سماوي) + **تحرير مباشر للمكافآت (+أخضر) والخصومات الأخرى (−أحمر) مع حساب الصافي لحظياً بمرآة نقية للصيغة** + بطاقة إجماليات + «توليد المسير» + «صرف المسير» (لوحة: صندوق+سعر+تاريخ+تأكيد → toast + لوحة نجاح بالإجمالي المصروف) + **طباعة مسير رواتب A4** (جدول أفقي + إجماليات + توقيعات إعداد/مراجعة/اعتماد — آلية #print-root مستقلة بلا تعديل ملفات Task 2) + المدفوع يظهر مقفلاً (Lock + «سجل ثابت») + سجل مسيرات سابقة (شارة مصروف/مسودة/جزئي) → لوحة تفاصيل + طباعة.
+   321→- **تعديل parties-rep-card.tsx (اتفق عليه مع 3-b)**: تفعيل «صرف العمولة» (أخضر، معطّل عند لا مستحق) → RepPayoutSheet (قائمة المستحق بتحديد/الكل + صندوق + تاريخ → POST pay-commissions → toast + تحديث البطاقة/الحساب) + قسم **«أداء الفترة»** جديد (رقائم فترة: الشهر/الربع/السنة/الكل): فواتير البيع(n+مبلغ)/مرتجعات/تحصيلات + عمولات الفترة — من /api/reps/[id]/account.
+   322→- مكونات مشتركة: components/employees/{employee-form, advance-form, cashbox-picker (من bootstrap+سعر صرف يدوي لغير الأساس), rep-payout-sheet, payroll-print}.
+   323→
+   324→**4) Seed — scripts/seed-people.ts (نُفِّذ ✅):** متكرر الأمان (يتخطى إذا attendance > 20). عبر دوال domain الحقيقية: 70 صف حضور (14 يوماً×5: محمد غياب1+تأخيران 40/25د، وليد إجازة+نص، أنس تأخير20د+غياب، رائد نص، سالم منتظم) + 4 سحبيات (وليد 8k وأنس 12k بالشهر الماضي خُصمت مع مسيره، محمد 15k وسالم 10k بالشهر الحالي ستُخصم من مسيره) + **مسير 2026-09 مُصروف فعلياً** (5 موظفين بإجمالي 434,250 ر.ي من الصندوق الرئيسي: محمد 115,000/سالم 100,000/وليد 72,000/أنس 77,250/رائد 70,000) + **مسير 2026-10 مسودة غير مصروفة** للعرض (صافي متوقع: محمد 104,000/سالم 90,000/وليد 78,666.66/أنس 87,000/رائد 68,833.33). لا يُنشئ عمولات (الموجودة حقيقية من المهام 2/3-b).
+   325→
+   326→**5) جودة:** bun run lint = **صفر أخطاء** (كل الملفات الجديدة). dev.log نظيف.
+   327→
+   328→**تسليمات للمراحل التالية:**
+   329→- **Task 4-a (تقرير أداء المناديب report-reps)**: استخدم `GET /api/reps/[id]/account?from=&to=` (أداء الفترة + مستحق/مدفوع) أو `GET /api/reps` (قائمة بإحصاءات). أنشئ الشاشة أنت في src/screens/reports/**.
+   330→- **Task 5**: مفاتيح تظهر في حركات الصندوق (4-a): tx_type=employee_advance (refType='advance')، salary_batch (refType='salary_period' + refId=صف المسير + employee_id)، commission_payout (refType='commission' + refId=المندوب). أرشفة الموظف/المندوب عبر PATCH isArchived. ملاحظة: جدول employee بلا عمود notes (كما في DDL).
+   331→- POST /api/reps + PATCH /api/reps/[id] جاهزان (واجهة الإنشاء لم تُبنَ — قائمة مناديب 3-b تُقرأ فقط؛ يمكن لـ Task 5 إضافة FAB).
+   332→
+   333→**6) أدلة التحقق (curl + browser — نُفِّذت فعلياً):**
+   334→- **lint**: `bun run lint` = صفر أخطاء (exit 0) على كامل المستودع (شامل ملفاتي). dev.log نظيف (كل الطلبات 200).
+   335→- **موظفون**: GET /api/employees → stats {count:5, monthlyEquivalent:460,000} ✓.
+   336→- **حضور batch**: POST entries [موظف1 تأخير 35د، موظف2 إجازة] → {saved:2}، GET اليوم → محمد late 35 / سالم leave / 3 حاضر، marked 5/5 ✓. تأخير بلا دقائق → 400 «أدخل دقائق التأخير…» ✓.
+   337→- **سحبية**: POST موظف5 5000 من الصندوق الرئيسي → cash_tx id=161 employee_advance amountBase=5000 ✓؛ الأرصدة: محمد 15,000/سالم 10,000/رائد 5,000 (**وليد وأنس = 0 — سحبيات سبتمبر خُصمت فعلاً مع مسير سبتمبر: إثبات منطق الترحيل**) ✓. عملة لا توافق الصندوق → 400 ✓.
+   338→- **رياضيات مسير 2026-10 (preview)**: محمد 120,000−2,000(تأخير 0.5ي=25د+35د×0.25ي)−15,000=**103,000** | سالم (إجازة بلا خصم) −10,000=**90,000** | وليد نص يوم −1,333.34=**78,666.66** | أنس غياب −3,000=**87,000** | رائد نص −1,166.67−سحبية 5,000=**63,833.33** — الإجمالي 422,499.99 ✓ (مطابق يدوياً).
+   339→- **generate** → تحديث المسودة بنفس الإجماليات ✓. **commit** (2026-07 بلا توليد مسبق) → 5 موظفين 460,000 (رواتب كاملة — لا حضور/سحبيات في يوليو) + 5 صفوف salary_period=paid + 5 cash_tx salary_batch (refType='salary_period', refId=صف المسير, employee_id) — النموذج: {amount:115000, employeeId:1, refType:'salary_period', refId:1, txDate:'2026-09-30', description:'صرف راتب 2026-09 — محمد عبده الشميري'} ✓. صرف مرتين → 400 «مسير هذا الشهر مصروف فعلاً» ✓. سجل المسيرات: 2026-10 مسودة / 2026-09 مدفوع 434,250 / 2026-07 مدفوع 460,000 ✓. بنود سبتمبر المخزنة: محمد (غياب1+تأخير1000→115,000)، وليد (سحبيات8000→72,000)، أنس (تأخير750+سحبيات12000→77,250) ✓.
+   340→- **عمولات**: GET /api/reps → خالد 3,929.32 (8 مستحقة)/عمار 1,327.88 (9)/ياسر 0. حساب عمار (الشهر): تحصيلات 3 أساسها 4,023.40، عمولات 9 = 1,327.88، netDue=1,327.88 ✓. **صرف عمولتين محددتين (ids 28,27) → paidCount=2 amountBase=24.14 + cash_tx commission_payout (rep 3) + remainingDue=1,303.74 (7 متبقية)** ✓. مندوب بلا مستحق → 400 ✓. POST rep + PATCH أرشفة ✓.
+   341→- **DB مباشرة**: 5 employee_advance + 10 salary_batch (Σ894,250) + 1 commission_payout + salary_period {07:paid×5 Σ460,000، 09:paid×5 Σ434,250، 10:draft×5 Σ422,499.99} + عمولتان مدفوعتان مرتبطتان payout_tx_id ✓.
+   342→- **browser (agent-browser)**: الموظفون (5) + بحث + إحصاءان ✓ → بطاقة محمد (راتب 120,000 + قيمة اليوم 4,000 + تنبيه سحبيات 15,000 + تقويم حضور أكتوبر + مسيرات) ✓ → مسير الرواتب: البطاقات الخمس بالقيم أعلاه + **تحرير مكافأة 5000 حيّاً → الصافي 103,000→108,000 فوراً** ✓ + الإجماليات + توليد/صرف + مسيرات سابقة (سبتمبر 434,250/يوليو 460,000) + لوحة تفاصيل سبتمبر + زر طباعة ✓ → الحضور اليومي: تاريخ اليوم + محمد تأخير 35د (حقل الدقائق + تلميح كل 60د=نصف يوم) + سالم إجازة + حفظ الكل → toast نجاح وتفريغ العداد ✓ → بطاقة مندوب خالد: **«أداء الفترة»** (الشهر: 4 فواتير 129,059/مرتجعات 0/تحصيلات 0/عمولات 3,929) + **«صرف العمولة» مفعّل** → لوحة الصرف (8 عمولات بتحديد الكل افتراضياً + صندوق + تاريخ + المحدد/الإجمالي + صرف المحدد) ✓ — بلا أي خطأ كونسول من شاشاتي (خطأ svg الوحيد من sales-invoice-details.tsx — ملف Task 2 مسبق).
+   343→- ملاحظة تكامل: شاشة «حركة نقدية جديدة» (4-a) تتضمن زر «سحبية موظف» — تكامل مع وحدتي يعمل عبر /api/advances.
+   344→
+   345→Stage Summary:
+   346→- ✅ كل مكونات Task 4-b مكتملة ومختبرة (domain ذري + 12 مسار API + 5 شاشات موظفين + تفعيل بطاقة المندوب + seed). lint نظيف، dev.log نظيف، الرياضيات مُتحقق منها يدوياً وبرمجياً.
+   347→- الخادم dev يعمل على 3000 (أُعيد تشغيله أثناء الجلسة — بيئة Sandbox توقفه أحياناً بين الجلسات).
+   348→
+   349→---
+   350→Task ID: 5
+   351→Agent: full-stack-developer
+   352→Task: الإعدادات والنسخ الاحتياطي والتدقيق والصقل النهائي
+   353→
+   354→Work Log:
+   355→- (وكيل استنفد حد الأدوار قبل كتابة سجله — وثّق المنسّق بعد تحقق فعلي بالـ curl)
+   356→- شاشات الإعدادات التسع منفذة كاملة: الرئيسية (قائمة)، بيانات المنشأة (PATCH + عملة أساسية مثبتة)، ترقيم المستندات (بادئات + عدادات سنوية بمعاينة)، الطباعة (قالب 58/80/A4 + خيارات + اختبار طباعة)، العرض (أرقام غربية/هندية + حجم خط + ثيم)، البيانات المرجعية (عملات + أسعار صرف يومية بتاريخ + صناديق CRUD)، النسخ الاحتياطي (تصدير JSON 250KB/استعادة بتحقق وتأكيد أحمر + سجل النسخ + بطاقة Supabase معطلة بصدق)، سجل التدقيق، حول (إحصاءات + فحص سلامة القاعدة).
+   357→- API: /api/settings(/company) GET+PATCH، /api/backup/{export,restore,log,check}، /api/exchange-rates (يومي + تاريخ)، /api/audit.
+   358→- src/domain/audit.ts (logAudit) موصول في 8+ مسارات حساسة (فواتير/تحويل معلّقة/سندات/عمولات/رواتب/استعادة/إعدادات).
+   359→- صقل: سطر «الرواتب» في تقرير الأرباح والخسائر (مستقل عن المصاريف بلا ازدواج)، تحذير حد الائتمان في POS قبل الحفظ الآجل/المختلط (FR-03-05)، FAB «مندوب جديد» + تعديل في شاشة المناديب.
+   360→
+   361→Stage Summary:
+   362→- تحقق المنسّق: كل APIs الإعدادات 200، تصدير نسخة احتياطية HTTP 200 بحجم 250,607 بايت، سجل التدقيق يحمل إدخالات فعلية، lint نظيف.
+   363→- جميع الشاشات الـ57 مسجلة ولا يوجد أي stub متبقٍ.
+   364→
+   365→## 5. الحالة النهائية والتسليم
+   366→
+   367→- ✅ التطبيق يعمل على `/`: SPA عربي RTL داكن كحلي/سماوي بإطار موبايل، شريط تبويبات سفلي (الرئيسية/البيع/المخزون/التقارير/المزيد)، 57 شاشة مسجلة كلها منفذة (لا stubs).
+   368→- ✅ قاعدة بيانات SQLite كاملة (34 جدولاً + seed يمني واقعي + 70+ فاتورة بيع/شراء/مرتجعات على 30 يوماً + سندات + أقساط + مصروفات + حضور ورواتب).
+   369→- ✅ دورة الفوترة الذهبية (تحقق QA نهائي عبر agent-browser): بحث صنف → إضافة → كمية +/- → إتمام نقدي → لوحة نجاح → إيصال حراري يُولَّد صحيحاً (رأس المنشأة + البنود + الإجماليات) → واتساب.
+   370→- ✅ مشتريات ومرتجعاتها (WAC)، جرد، تحويل مخازن، تنبيهات، كشوف حساب بدين/دائن/رصيد متحرك، سندات قبض/صرف بتوقيعات وتفقيط، تقسيط بجدول وتحصيل ومتأخرات، صناديق بأرصدة حية ومصروفات ووردية، موظفون/حضور/سحبيات/مسير رواتب (رياضيات مُتحققة)، مناديب وعمولات وصرفها، تقارير (أرباح وخسائر برواتب مستقلة، مبيعات حسب X مع مقارنة، أعمار ديون FIFO، حركة صنف، أقساط + توقع 6 أشهر، مصاريف، صناديق، ضريبة، أداء مناديب) مع طباعة A4 وCSV.
+   371→- ✅ إعدادات شاملة (منشأة/ترقيم/طباعة/عرض/بيانات مرجعية بأسعار صرف يومية) + نسخ احتياطي JSON (تصدير 250KB/استعادة بفحص وتأكيد) + سجل تدقيق موصول بـ8+ مسارات حساسة + حول بفحص سلامة.
+   372→- ✅ تحذير حد الائتمان في POS (FR-03-05)، الأرقام غربية/هندية، تصميم متجاوب (إطار موبايل 390px + سطح المكتب).
+   373→- ✅ الخادم يعمل كعملية خفية (scripts/daemon-dev.ts) لتفادي قاتل الجلسات — استخدمه إن مات الخادم.
+   374→- ⚠️ حدود بيئة الويب (بديل مكافئ): الطباعة عبر نافذة طباعة المتصفح (58/80مم/A4) بدل BLE، واتساب عبر wa.me نصياً بدل PDF مرفق، لا كاميرا باركود (إدخال يدوي + بحث فوري)، النسخ السحابي Supabase معطل بصدق.
+   375→- 📌 QA النهائي (agent-browser): صفر أخطاء كونسول/صفحة في كل الشاشات المفحوصة (الداشبورد/POS/التقارير/الأقساط/النسخ/سطح المكتب).
+   376→
+   377→---
+   378→Task ID: 6-a
+   379→Agent: full-stack-developer
+   380→Task: App-wide numbers shape (FR-13-05) + TrendBadge clamp
+   381→
+   382→Work Log:
+   383→- `src/lib/format.ts`: أضفت متغير وحدة `digitsShape` (افتراضي western) + `setDigitsShape()` + `getDigitsShape()` + `shaped()` خاصة؛ `formatAmount` الآن يمرر مخرجه عبر `shaped()` فيتبع كل استدعاءاته (266+) الشكل المفعّل. **لم تُمس التواريخ** (formatDate/formatDateTime/formatTime12) — مخارجها تدخل حمولات API وحقول date. لا استيراد للمخزن هنا (لا دائرية ولا SSR).
+   384→- `src/components/app-shell.tsx`: اشتراك `numbers` من useDisplaySettings + **حارس ترطيب** عبر `useSyncExternalStore` (emptySubscribe/() => true/() => false — snapshot الخادم false ثم يعاد الرسم بقيمة العميل؛ بديل useEffect+setState الذي رفضه lint react-hooks/set-state-in-effect) → `effective = mounted ? numbers : "western"` → `setDigitsShape(effective)` قبل الرسم (إسناد متغير وحدة آمن) + `key={effective}` على جذر الإطار (relative flex min-h-dvh max-w-[430px]) فيعيد تركيب الشجرة كاملة عند التبديل (المخزن zustand للتنقل والـ QueryClient فوق AppShell فلا تفقد الحالة/الكاش).
+   385→- `src/components/settings/numbers-context.tsx`: تحديث التعليق التوثيقي فقط — الشكل الآن شامل عبر setDigitsShape + remount؛ useFormatD/formatAmountD أبقيا للتوافق الرجوعي (سلوكهما = formatAmount الآن).
+   386→- `src/screens/settings/settings-display.tsx`: صندوق المعاينة أعيد تصميمه (حد border-border/50 + المبلغ النموذجي text-[15px] font-bold في سطر مستقل) + نص التنبيه الجديد: «يُطبَّق فوراً على مبالغ وكميات كل شاشات التطبيق (التواريخ تبقى بالشكل القياسي).».
+   387→- `src/components/ds/trend-badge.tsx`: قيد النسب السخيفة — clamp إلى ±999 مع لاحقة «+» عند القص (+1026.6% → 999%+)؛ الألوان/الأيقونات كما هي.
+   388→- مسح الاتساق: settings-backup.tsx (إجمالي السجلات → `formatAmount(totalRecords, {decimals:0, showSymbol:false})`) + employees-advances.tsx (شارة رصيد الموظف `formatAmount(b.unpaidBase, {currency:"YER", showSymbol:false})` ومكافئ «≈ … ر.ي» `formatAmount(a.amountBase, {currency:"YER", showSymbol:false})`). لم تُمس رسائل domain/cash.ts (خادم) ولا components/ui.
+   389→- ملفات أخرى لم تُعدَّل (لا sales-pos/home/prisma/APIs) — التعميم تحقق عبر نقطة الاختناق format.ts وحدها.
+   390→
+   391→التحقق (bun run lint = صفر أخطاء؛ dev.log نظيف):
+   392→- الرئيسية بهندية: «مبيعات اليوم ٥٧١,٤٢١ ر.ي / أرباح اليوم ١٥٨,٧٨٥ / فواتير اليوم ١٩ / صافي الصندوق ٣٧٩,٩٤٦» — TrendBadge مقيد «+999+%» (كان +1026.6%).
+   393→- إعدادات العرض: المعاينة ١,٢٣٤,٥٦٧ ر.ي؛ POS: إجمالي «٠ ر.ي»، بحث «أرز» → النتيجة ٥٧/٩,٨٠٠، سطر السلة ٩,٨٠٠ ر.ي، حقل رقم الفاتورة input يعمل (كتابة/قراءة)، الإجمالي ٩,٨٠٠ ر.ي.
+   394→- تقرير حركة الشركة بهندية: كل بلاطات KPI بالهندية (٦٢٨,٦٤١/٤٥٧,٨٠٦/١٧٠,٨٣٥/٣٧,٠٠٠/١٢٨,٥٧٨) — صفر أخطاء صفحة/كونسول.
+   395→- **سلامة البيانات**: بيع نقدي كامل بالوضع الهندي (أرز بسمتي ×1) → POST /api/invoices 200 → الفاتورة INV-2026-00072 مخزنة سليمة (subtotal/total/totalBase/paid = 9800 رقماً غربياً، due=0، cash/الصندوق الرئيسي) وتظهر في فواتير المبيعات «٩,٨٠٠ ر.ي» — التحويل عرضي فقط.
+   396→- التبديل رجوعاً لغربية: الرئيسية 581,221 (شملت بيعتي +9,800). لوحة تأكيد الاستعادة: «إجمالي السجلات 1,055» عبر formatAmount. شاشة السحبيات تعمل برقائق الأرصدة المنسقة.
+   397→- ترطيب آمن: localStorage=arabic + تحديث كامل للصفحة → هندية مباشرة بلا أي تحذير hydration (useSyncExternalStore gate)؛ أُعيد الوضع الافتراضي غربياً بعدها.
+   398→
+   399→Stage Summary:
+   400→- FR-13-05 مكتمل شاملاً: خيار «هندية/غربية» يغير فوراً كل مبالغ/كميات التطبيق (داشبورد/POS/فواتير/تقارير/خزينة/موظفين/أطراف/أقساط) عبر setDigitsShape + إعادة تركيب AppShell، مع حارس ترطيب بلا mismatch، والتواريخ تبقى قياسية عمداً حماية للبيانات. TrendBadge صار مقيداً بـ±999%+ (إصلاح +988%/+1026.6% في الداشبورد). أثر جانبي مقبول: تبديل الشكل يعيد تركيب الشاشة الحالية (يفري حالات محلية كسلة POS المعلقة بلا حفظ — سلوك مقصود للتصميم).
+   401→---
+   402→Task ID: 6-b
+   403→Agent: full-stack-developer
+   404→Task: البحث الشامل (global search) + POS history access + styling polish
+   405→
+   406→Work Log:
+   407→- **شاشة «البحث الشامل» الجديدة (`global-search`)**: ملف جديد `src/screens/home/global-search.tsx` + تسجيله في `src/screens/home/index.tsx` (يندمج تلقائياً في registry). AppHeader «البحث الشامل» + SearchBar لاصقة (autoFocus + مسح ✕ + debounce 250ms بنمط setTimeout نفس شاشة البيع + حد أدنى حرفان) + 4 نداءات متوازية useQuery على **APIs قائمة فقط** (مفاتيح `['global-search', <قسم>, q]` مع `enabled: q.length >= 2`): products/search + parties/customers + parties/suppliers + invoices (docType=sale الافتراضي — بحث برقم المستند أو اسم العميل/المورد).
+   408→- أقسام النتائج: SectionTitle + شارة عدّاد ملوّنة (أصناف أخضر/عملاء سماوي/موردون كهرماني/فواتير أحمر) + AppCard بصفوف ListRow + هياكل Skeleton أثناء التحميل. صف الصنف: الاسم + رقاقة فئة + «الرصيد: X» + السعر بـ AmountText (يفضّل prices.YER وإلا أول مفتاح) + AlertTriangle كهرماني عند isLowStock → بطاقة الصنف. صف العميل: الاسم + هاتف/منطقة + الرصيد (due موجب «عليه»/pos سالب «له») → بطاقة العميل. صف المورد: مثلهم + «مستحق له/عليه» → بطاقة المورد. صف الفاتورة: الرقم + StatusChip (نقدي/آجل/مختلط/معلّق) + عدد البنود + الإجمالي والمتبقي → تفاصيل الفاتورة. أسماء البارامترات (productId/customerId/supplierId/invoiceId) تحقّقت من الشاشات الأربع المعنية. الحالات: أقل من حرفين → تلميح EmptyState؛ لا نتائج → «لا نتائج لـ"…"».
+   409→- **نقطة الدخول**: زر دائري أبيض/20 (size-9 rounded-full, Search, aria-label «البحث الشامل») في بداية السطر العلوي لبطاقة الترحيب بالرئيسية → push('global-search').
+   410→- **POS — سجل الفواتير**: sales-pos.tsx أضيف push لـ useNav + زر (size-11 rounded-xl، ReceiptText، aria-label «سجل الفواتير») بعد العنوان وقبل حقل رقم الفاتورة، يظهر **فقط** عند `mode === "invoice" && !showBack` (جذر التبويب — لا يتكدس داخل السياقات المدفوعة) → push('sales-invoices').
+   411→- **صقل 3a (home.tsx)**: لوحة الطابعة مطوية افتراضياً (useState(true) — الزر يعمل) + أيقونات البلاطات الأربع (TrendingUp/Banknote/Receipt/Wallet) + بلاطات الوحدات: رقاقة أيقونة مصبوغة (size-12 rounded-2xl بـ color+'1A') + hover رفع/ظل سماوي transition-all + رأس داخل بطاقة الرسم: «الإجمالي 30 يوماً: X ر.ي» (AmountText) + نقطة سماوية «المبيعات اليومية».
+   412→- **صقل 3b (stat-tile.tsx — إضافي 100% رجعياً)**: شريط تدرّج خافت فوق العنوان (h-0.5 w-8 from-primary/40) + hover:border-primary/30 وactive:scale-[0.98] عند القابلية للنقر. (استخدامات التقارير تحققت بعدها — report-pl يعرض 4 بلاطات سليمة).
+   413→- **صقل 3c (POS)**: صف الإجمالي داخل بطاقة تدرّج `rounded-2xl border border-primary/20 bg-linear-to-l from-primary/10 via-transparent to-transparent p-3` (bg-linear = اسم Tailwind 4) — زر إتمام البيع كما هو.
+   414→
+   415→Stage Summary:
+   416→- البحث الشامل يعمل لحظياً عبر 4 مصادر متوازية (أصناف/عملاء/موردون/فواتير مبيعات) مع تنقل مباشر لبطاقات الكيانات — تحقق كامل بالمتصفح: «أرز» → أرز بسمتي 5كجم (الرصيد 56، 9,800 ر.ي) → بطاقة الصنف ✓؛ «سامي» → العميل (197,223 عليه) + 6 فواتيره بالرقائق → بطاقة العميل ✓؛ «71» → INV-2026-00071 (نقدي 19,600) → تفاصيل الفاتورة ✓؛ حرف واحد → تلميح ✓؛ «zzzz» → «لا نتائج لـ"zzzz"» ✓.
+   417→- زر «سجل الفواتير» في POS ظهر بجذر التبويب وقاد للقائمة والرجوع عاد للـ POS، واختفى صحيحاً عند فتح POS بسياق مدفوع (بوابة showBack).
+   418→- الصقل: الرئيسية (طابعة مطوية/أيقونات/بلاطات مصبوغة/رأس الرسم بالإجمالي) + StatTile بعمق بصري متوافق رجعياً (تقارير سليمة) + تدرّج إجمالي POS. مبالغ كل الشاشات الجديدة عبر formatAmount → تتبع شكل الأرقام الهندية/الغربية تلقائياً (عمل 6-a لم يُمس).
+   419→- bun run lint = **صفر أخطاء**؛ dev.log نظيف (كل الطلبات 200)؛ صفر أخطاء صفحة/كونسول في كل الشاشات المفحوصة (رئيسية/بحث/بطاقات/POS/تقرير حركة الشركة). لقطات: tmp-q/{01-home-polished,02-global-search-results,03-pos-totals-gradient}.png.
+   420→
+   421→---
+   422→
+   423→## 7. جولة الصيانة والتطوير — (جلسة المراجعة والتطوير: 2026-10-05)
+   424→
+   425→**المنسّق**: جلسة تقييم + QA + تطوير عبر فريق وكلاء (Task 6-a و 6-b).
+   426→
+   427→### (أ) تقييم الحالة الحالية (QA عبر agent-browser)
+   428→- الخادم حي (منفذ 3000)، `bun run lint` صفر أخطاء، صفر أخطاء كونسول/صفحة.
+   429→- المسار الذهبي سليم: بحث صنف → إضافة → كمية+ → إتمام نقدي → لوحة نجاح INV-2026-00071 (19,600 ر.ي) → فاتورة جديدة. قائمة الفواتير + تفاصيلها سليمة (لا خطأ SVG متبقٍ).
+   430→- المخزون (26 صنفاً/2,245,490 ر.ي)، التقارير (10 تقارير + حركة الشركة بـ KPIs حية)، الخزينة (صندوقان بأرصدة حية)، الإعدادات (9 شاشات)، سطح المكتب (إطار 430px) — كلها تعمل.
+   431→- **ثغرات مكتشفة**: (1) شكل الأرقام الهندية كان مطبقاً على شاشات الإعدادات فقط (فجوة FR-13-05 موثقة)، (2) لا وصول لسجل الفواتير من POS، (3) نسب اتجاه مضخمة (+1026.6%) عند مقارنة يوم شبه صفري، (4) لوحة الطابعة مفتوحة افتراضياً تشوش الداشبورد، (5) لا بحث موحد عبر الكيانات.
+   432→
+   433→### (ب) المنجز في هذه الجولة
+   434→
+   435→**Task 6-a — تعميم شكل الأرقام (FR-13-05 مكتمل):**
+   436→- `format.ts`: علم `digitsShape` + `setDigitsShape()` + `shaped()` — تنسيق المبالغ/الكميات عبر `formatAmount` (266 استخداماً) يتبع الشكل تلقائياً. التواريخ تبقى قياسية (حماية حمولات API ومدخلات التاريخ).
+   437→- `app-shell.tsx`: اشتراك بالشكل + `setDigitsShape` أثناء الرندر + `key={effective}` يعيد تركيب الشجرة عند التبديل؛ بوابة ترطيب (hydration) آمنة عبر `useSyncExternalStore` (صفر تحذيرات).
+   438→- `trend-badge.tsx`: تقييد النسب عند ±999 («999%+»).
+   439→- نسف `toLocaleString` المباشر في settings-backup وemployees-advances ليتبع الشكل.
+   440→- **تحقق الوكيل**: هندية على الرئيسية/POS/الأرباح والخسائر (٥٨١,٢٢١...)، **بيع نقدي أثناء وضع هندية → POST 200 وفاتورة INV-2026-00072 سليمة بالقاعدة (9,800)** — التحويل عرضي فقط لا يفسد البيانات؛ عودة غربية تعمل.
+   441→
+   442→**Task 6-b — البحث الشامل + سجل POS + صقل بصري:**
+   443→- **شاشة جديدة «البحث الشامل»** (`global-search`): 4 استعلامات متوازية (أصناف/عملاء/موردين/فواتير) على APIs قائمة + أقسام برقائق عدّ ملونة + روابط عميقة موثقة المعاملات (بطاقة صنف/عميل/مورد/تفاصيل فاتورة) + حالات (تلميح <حرفين، لا نتائج) + Skeleton لكل قسم. زر دخول دائري في بطاقة الترحيب بالرئيسية.
+   444→- **POS**: زر «سجل الفواتير» (ReceiptText) في الرأس — فقط عند جذر التبويب (لا يتراكم داخل الشاشات المدفوعة) → sales-invoices.
+   445→- **صقل**: PrinterPanel مطوية افتراضياً؛ أيقونات للـ StatTiles الأربعة (TrendingUp/Banknote/Receipt/Wallet)؛ رقائق أيقونات ملونة + hover lift لبلاطات الوحدات؛ رأس بطاقة الرسم «الإجمالي 30 يوماً: X ر.ي» + وسيم سيان؛ StatTile شريط تدرّج علوي + hover/active (توافق كامل للخلف)؛ شريط إجماليات POS بتدرّج سيان خافت.
+   446→
+   447→### (ج) تحقق المنسّق بعد الدمج (تكامل 6-a × 6-b)
+   448→- الرئيسية: زر البحث موجود، الطابعة مطوية («توسيع»)، +999+% مقيدة، الإجمالي 30 يوماً ظاهر.
+   449→- البحث الشامل: «سامي» → عميل (197,223 عليه) + 6 فواتير → نقرة → بطاقة العميل تفتح.
+   450→- **بوضع هندية: البحث الشامل يعرض ١٩٧,٢٢٣ ر.ي** — الشاشة الجديدة تتبع الشكل تلقائياً (تكامل سليم). أعيد للغربية.
+   451→- POS: زر السجل → القائمة → رجوع يعمل. `agent-browser errors` صفر، console نظيف.
+   452→- `bun run lint` صفر أخطاء؛ dev.log كل الطلبات 200 (شامل 4 نقاط نهاية البحث المتوازية وPATCH الإعدادات).
+   453→- لقطات: `tmp-q/final-home-verified.png` و`tmp-q/01-home-polished.png` و`tmp-q/02-global-search-results.png`.
+   454→
+   455→### (د) المتبقي / المخاطر / أولويات الجولة القادمة
+   456→1. **نسبة الهامش في البحث الشامل والتقارير** تظل بأرقام غربية (النطاق: مبالغ/كميات) — تعميمها يحتاج قرار تصميم.
+   457→2. التبديل بين الأشكال يعيد تركيب الشاشة الحالية — سلة POS غير المحفوظة تُفرَّغ (تصميم متعمَّد؛ الكدس وذاكرة الاستعلام تبقى).
+   458→3. **مقترحات الجولة القادمة**: (أ) بحث شامل بالموردين ضمن الفواتير (شراء/مرتجعات) — حالياً المبيعات فقط؛ (ب) اختصار لوحة مفاتيح للبحث الشامل من أي شاشة؛ (ج) ثيم فاتح «قريباً» في إعدادات العرض إما تنفيذه أو إزالة البطاقة؛ (د) تعديل/حذف حركات الصندوق (FR-04-08) وتسوية فرق الوردية آلياً؛ (هـ) تعميم الأرقام الهندية على التواريخ المعروضة (إدخال `formatDateDisplay` منفصل عن ISO الخاص بالحمولات).
+   459→
+   460→---
+   461→Task ID: 7-a
+   462→Agent: full-stack-developer
+   463→Task: البحث الشامل v2 (كل أنواع المستندات + عروض الأسعار + اختصار Ctrl+K)
+   464→
+   465→Work Log:
+   466→- **GET /api/invoices (`src/app/api/invoices/route.ts`)**: `docType` أصبح يقبل قائمة مفصولة بفواصل — `docTypes = (sp.get("docType") ?? "sale").split(",").map(trim).filter(Boolean)` وفي `where`: `docType: docTypes.length === 1 ? docTypes[0] : { in: docTypes }`. POST لم يُمس. أضيف `docType: r.docType` في صفوف الاستجابة (و`InvoiceListItemDto` في dto.ts أصبح يحمله — إضافة حقل فقط، المُنشئ الوحيد للـ DTO هو هذا المسار). التوافق الرجعي تحقق: مسح كل مستهلكي GET (purchases-list/sales-invoices/sales-pos/installments-plans/voucher-form) — كلهم قيم مفردة بلا فواصل. تحقق curl: `docType=sale,purchase,...&q=PUR` → 14 فاتورة شراء؛ `docType=sale&q=INV-...` وبلا بارامتر → سلوك مطابق حرفياً.
+   467→- **global-search.tsx (v2)**: استعلام الفواتير صار `docType=sale,purchase,sale_return,purchase_return`؛ القسم أعيد تسميته «المستندات والفواتير» برقاقة نوع لكل صف — بيع #22D3EE / شراء #FBBF24 / مرتجع بيع #F87171 / مرتجع شراء #FB923C (برتقالي بين الأحمر والكهرماني، حسب طلب «red/amber») — الأيقونة القائدة تتلوّن بلون النوع. التنقل: `sale` → sales-invoice-details، والثلاثة الباقية → purchases-details (الشاشة تعرض الشراء ومرتجعي الشراء/البيع — تحقق من كودها DOC_LABELS). الطرف المعروض: `supplierName ?? customerName ?? «مورد نقدي/نقدي»`. استعلام خامس متوازٍ: عروض الأسعار `getJson('/api/quotations?q=…&page=1')` بقسم «عروض الأسعار» (عدّاد بنفسجي #A78BFA، أيقونة FileText) وصفوف: quoteNo + StatusChip بالحالات الفعلية (مفتوح/محوّل/مرفوض من خريطة StatusChip نفسها) + اسم العميل + البنود + الإجمالي AmountText، والنقر → sales-quotations (تفاصيلها لوحة داخلية في القائمة نفسها). ترتيب الأقسام: الأصناف، العملاء، الموردون، المستندات والفواتير، عروض الأسعار. hint/placeholder حُدّثا لذكر التغطية الجديدة. المبالغ كلها عبر AmountText/formatAmount → تتبع شكل الأرقام الهندية/الغربية (6-a) تلقائياً.
+   468→- **تلميح الاختصار**: صف صغير تحت SearchBar داخل رأس شاشة البحث — `<kbd dir="ltr">Ctrl + K</kbd> بحدود bg-muted + نص «يفتح البحث من أي شاشة» بحجم 11px خافت.
+   469→- **app-shell.tsx**: مستمع keydown عام (useEffect مع تنظيف عند الفك): Ctrl+K/⌘K يعمل من أي شاشة وحتى داخل حقول الإدخال (وترة لا تكتب نصاً)؛ زر `/` فقط عندما لا يكون الهدف input/textarea/select/contentEditable (مساعد `isEditableTarget`) وبلا معدّلات؛ كلاهما preventDefault ثم `nav.push('global-search')` من الكائن الأمري في @/lib/nav — مع حارس: لا دفع إن كانت global-search أعلى كدس التبويب النشط بالفعل (استُخدم useNav.getState().current()).
+   470→
+   471→التحقق (bun run lint = صفر أخطاء؛ agent-browser errors فارغ؛ console نظيف؛ dev.log كل الطلبات 200 بما فيها docType المركب):
+   472→- «PUR» → 14 فاتورة شراء برقائق «شراء» وأسماء الموردين (شركة النخبة…/مؤسسة البركة/«مورد نقدي») → نقرة PUR-2026-00014 → شاشة فاتورة شراء ✓ (رجوع يعيد للبحث).
+   473→- «71» → INV-2026-00071 «بيع» (انحدار المبيعات) ✓؛ «INV-2026-00061» نقرها → تفاصيل فاتورة المبيعات ✓.
+   474→- «النخبة» → صف المورد + 10 مشتريات + PRN-2026-00001 «مرتجع شراء» (نقرها → شاشة مرتجع شراء ✓)؛ «SRN» → 3 مرتجعات بيع (نقر SRN-2026-00001 → شاشة «مرتجع بيع» ✓).
+   475→- «QTE» → 5 عروض أسعار برقائق مفتوح/محوّل (مطابقة لتسميات sales-quotations) → نقرة → قائمة عروض الأسعار ✓.
+   476→- «السعادة» → 3 أقسام معاً (عميل + SRN/INV + QTE) — لقطة tmp-q/7a-search-v2.png (full).
+   477→- Ctrl+K من الرئيسية → البحث الشامل ✓؛ Ctrl+K مرتين فوق شاشة البحث → لا تراكم (رجوع واحد يعيد للرئيسية مباشرة) ✓؛ `/` داخل حقل البحث كُتب حرفاً عادياً («سام/») بلا خطف ✓؛ `/` من الرئيسية (خارج الحقول) → يفتح البحث ✓.
+   478→- انحدار القوائم: فواتير المشتريات — فلاتر «فواتير الشراء»=14 PUR فقط، «مرتجع شراء»=2 PRN، «مرتجع بيع»=3 SRN (قيم docType مفردة)؛ قائمة فواتير المبيعات = INV فقط. الحالات: حرف واحد → «اكتب حرفين على الأقل»، «zzzz» → «لا نتائج لـ"zzzz"».
+   479→
+   480→Stage Summary:
+   481→- البحث الشامل الآن يغطي كل بيانات التطبيق فعلياً: أصناف + عملاء + موردون + كل المستندات (بيع/شراء/مرتجع بيع/مرتجع شراء برقائق نوع ملوّنة وتنقّل صحيح لكل نوع + عرض المورد بدل العميل للفواتير الشرائية) + عروض الأسعار (بحالاتها) — عبر 5 استعلامات متوازية بلا نقاط نهاية جديدة.
+   482→- GET /api/invoices يقبل docType مفرداً أو قائمة مفصولة بفواصل بذاك توافق كامل للخلف (كل المستهلكين القدامى لم يتغيّر سلوكهم — مُتحقق E2E).
+   483→- اختصار لوحة المفاتيح: Ctrl+K (أو ⌘K) يفتح البحث الشامل من أي شاشة دون تكدّس، و`/` يعمل خارج حقول الإدخال فقط، مع تلميح kbd داخل شاشة البحث للاكتشاف.
+   484→
+   485→---
+   486→Task ID: 7-b
+   487→Agent: full-stack-developer
+   488→Task: POS «الأكثر مبيعاً» quick-add + صقل بصري (المزيد/التقارير/الإعدادات/لوحة النجاح)
+   489→
+   490→Work Log:
+   491→- **DTO (`src/domain/dto.ts`)**: أضفت `TopProductDto extends ProductSearchItemDto` (بحقل `qtySold`) + `TopProductsResponse` — الوراثة المقصودة كي تتغذى رقائق الإضافة السريعة من نفس بنية `addProduct` بلا أي تحويل أو منطق مكرر.
+   492→- **API جديد `GET /api/products/top` (`src/app/api/products/top/route.ts`)**: ?limit=8&days=30 — `db.invoiceItem.groupBy({ by:['productId'], _sum:{qty:true}, where:{ invoice:{ docType:'sale', status:'completed', issuedAt:{gte: from} } }, orderBy:{_sum:{qty:'desc'}}, take:limit*3 })` (هامش ×3 لأن take يسبق فلترة المؤرشفة؛ issuedAt نص ISO YYYY-MM-DD فالمقارنة المعجمية آمنة) ثم findMany بنفس includes مسار products/search (prices/stockLevels/unit/category) + isArchived:false، والدمج يحفظ ترتيب qtySold تنازلياً ويقص الحد. الاستجابة: بنية صنف البحث كاملة + qtySold (رقم). معالجة خطأ عربية موحدة «تعذر جلب الأصناف الأكثر مبيعاً» (500).
+   493→- **POS (`src/screens/sales/sales-pos.tsx`)**: useQuery بمفتاح `['products-top']` وstaleTime 5 دقائق → صف رقائق أفقي أسفل SearchBar مباشرة (فوق البنود) بعنوان غير متمرر «الأكثر مبيعاً ⚡» (bg-muted/70، 11px) وحاوية `scrollbar-slim snap-x flex-1 overflow-x-auto` — النقر يستدعي **نفس منطق نتيجة البحث حرفياً**: `pos.addProduct(p); beep(1318, 0.09)` (بلا toast — قابلة للنقر السريع المتكرر). الرقاقة: rounded-full border-border/60 bg-card px-3 py-2، الاسم 12.5px + السعر formatAmount (13px bold، بلا رمز عملة، متوافق شكل الأرقام) + شارة «N بيع» خافتة 10px (formatAmount بلا رمز)؛ الرصيد المنخفض: حلقة كهرمانية ring-1 + نقطة تحذير بدل الشارة؛ active:scale-95 + hover:border-primary/50. تظهر في وضعي invoice|quotation (نفس السلة)، وتختفي تلقائياً إن لم توجد بيانات. قطرات البحث الفوري المطلقة (z-20) تغطيها أثناء الكتابة — سلوك مقصود.
+   494→- **صقل «المزيد» (`more.tsx`)**: ألوان المجموعات حسب الهوية (الخزينة أخضر #34D399، السندات برتقالي #FB923C، الموظفون بنفسجي #A78BFA، المشتريات أصفر #FBBF24) + تظليل الرقاقة alpha 1A — الـ chevron التالي موجود أصلاً تلقائياً عبر ListRow (16/16). بطاقة المستخدم: حلقة سماوية ring-1 ring-[#22D3EE]/30 + دائرة زخرفية white/10 مع relative/overflow-hidden.
+   495→- **صقل «التقارير» (`reports-gallery.tsx`)**: أيقونات/ألوان حسب المواصفة — أعمار الديون Clock أحمر، حركة صنف PackageSearch كهرماني، المصروفات Calculator أحمر، الأقساط CalendarClock كهرماني، الضريبة Receipt بنفسجي، أداء المناديب أخضر (كانت F472B6) — رقاقة size-10 بتظليل 1A + رفع hover (transition-all + hover:-translate-y-0.5 + hover:shadow-lg + hover:border-primary/40، مع active يلغي الرفع) — الأوصال كما هي.
+   496→- **صقل «الإعدادات» (`settings-main.tsx`)**: منشأة Building2 سيان / ترقيم Hash كهرماني / طباعة Printer أخضر / عرض **Palette بنفسجي** (كانت SlidersHorizontal سيان) / بيانات مرجعية Database سيان / نسخ DatabaseBackup أحمر / تدقيق ScrollText كهرماني / حول Info رمادي + **ChevronLeft خافت في الطرف** داخل سطر علوي (رقاقة البداية + السهم) يتفاعل مع hover المجموعة + رفع/ظل hover متسق مع البلاطات الأخرى.
+   497→- **لوحة النجاح (`success-sheet.tsx`)**: framer-motion — دائرة علامة الصح تقفز spring (scale 0→1، stiffness 320 / damping 16، بتجاوز طفيف، delay 80ms) وبطاقة المبالغ تنزلق/تتلاشى (opacity+y:14→0، delay 180ms = 100ms بعد الصح، easeOut 350ms). المنطق والمعالجات لم تُمس إطلاقاً — الحركة تعمل مع كل عملية بيع (المكوّن يُفك عند success=null بين العمليات).
+   498→- **list-row.tsx (2e)**: قرأته — يملك أصلاً trailing slot + خاصية chevron مع سهم تلقائي عند onClick → **لا شيء مطلوب** (صفر تغيير).
+   499→
+   500→التحقق (bun run lint = صفر أخطاء؛ tsc نظيف لكل ملفاتي — خطأ isActive في سطر 409 سابق من HEAD ولم أمسه؛ agent-browser errors فارغ؛ console نظيف):
+   501→- `/api/products/top` → 200 (curl + dev.log) بأصناف حقيقية: سكر أبيض 101 بيع / أرز بسمتي 64 / فاصوليا 57 / ملح 56 / بسكويت 53 / شاي 43 / عصير مانجو 39 / دقيق 39 — الأسعار مطابقة للقاعدة (9,800/1,350/780…).
+   502→- POS: الرقائق تحت شريط البحث — نقرة «أرز بسمتي» → سطر «(قطعة) الرصيد: 56، 9,800 ر.ي» والإجمالي 9,800؛ نقرة ثانية → 19,600 (كمية 2 — نفس سلوك نتيجة البحث المكررة عبر addProduct)؛ qtySold حي: أصبح «66 بيع» بعد بيعتي (64+2).
+   503→- بيع نقدي كامل من رقاقة: لوحة نجاح INV-2026-00073 (19,600) ثم INV-2026-00074 بعد إعادة تشغيل الخادم (9,800) — POST /api/invoices 200 في dev.log، motion.span مستقرة (opacity:1) والفاتورة جديدة تبدأ سليمة.
+   504→- المزيد: 16 صفاً برقائق مصبوغة rgba(...,0.1) و16 chevron؛ الخزينة تفتح (حركة جديدة/كشف/وردية) والعودة عبر التبويب تعمل؛ التقارير: بطاقات size-10 بتظليل 1A + hover:-translate-y-0.5، حركة الشركة يفتح بكل KPIs (صافي 658,041) بلا أخطاء.
+   505→- الإعدادات: 8 بلاطات برقائق + 8 أسهم؛ إعدادات العرض → هندية → رقائق POS تعرض «٩,٨٠٠» و«١٠١ بيع» → عودة غربية (الرئيسية 600,821).
+   506→- لقطات: tmp-q/{7b-pos-quickadd,7b-more-polish,7b-reports-polish}.png.
+   507→- **ملاحظة تشغيل**: خادم dev الأصلي (start.sh الخاص بالمنصة) انهار منتصف الجلسة (زومبي)؛ أعيد تشغيله منفصلاً بنفس الأمر `bun run dev` (يكتب dev.log كالمعتاد) وثابت الآن — كل التحقق أعلاه أعيد إجراؤه على الخادم الجديد. أخطاء 500/ReferenceError عابرة في dev.log كانت أثناء التحرير منتصف التعديل (motion.div غير مغلقة/استيراد BriefcaseBusiness مؤقت) واختفت بعد الإصلاح.
+   508→
+   509→Stage Summary:
+   510→- ميزة سرعة POS مكتملة: صف «الأكثر مبيعاً» (آخر 30 يوماً) بنقرة واحدة تحت البحث — إعادة استخدام addProduct/beep الحرفية (صفر منطق مكرر)، حية من تجميع بنود فواتير البيع المكتملة، مع شارة مبيعات وحالة رصيد منخفض وحيدة الاتجاه الرقمي (هندية/غربية تلقائياً).
+   511→- جولة صقل ثانية متسقة مع الهوية: تظليل 1A موحد للرقائق المصبوغة، ألوان/أيقونات معايرة لكل مجموعة في المزيد/التقارير/الإعدادات مع chevron خافت وحركة رفع/ظل hover، ولوحة نجاح POS بحركة spring/framer-motion بلا أي تغيير منطقي.
+   512→- كل القياسات خضراء: lint صفر، لا أخطاء صفحة/كونسول، POST /api/invoices وGET /api/products/top بـ 200، انحدار المسار الذهبي والتقارير والإعدادات وشكل الأرقام سليم.
+   513→
+   514→---
+   515→
+   516→## 8. جولة التطوير الثانية — (جلسة المراجعة: 2026-10-05، الجزء 2)
+   517→
+   518→**المنسّق**: QA + تطوير عبر وكلاء (Task 7-a و 7-b).
+   519→
+   520→### (أ) تقييم البداية
+   521→- الخادم حي، lint نظيف، QA بالمتصفح: الرئيسية/البحث الشامل/POS/حركة الشركة كلها سليمة بلا أخطاء.
+   522→- **الثغرة المكتشفة**: البحث الشامل يغطي فواتير البيع فقط — «PUR» بلا نتائج (موثقة في §7-د).
+   523→
+   524→### (ب) المنجز
+   525→
+   526→**Task 7-a — البحث الشامل v2:**
+   527→- `GET /api/invoices` يقبل `docType` متعدداً بفواصل (توافق رجعي كامل — كل المستهلكين الستة يرسلون قيمة واحدة).
+   528→- البحث الشامل: قسم «المستندات والفواتير» يشمل بيع/شراء/مرتجع بيع/مرتجع شراء برقائق ملونة وملاحة صحيحة (بيع → تفاصيل البيع؛ البقية → purchases-details التي تخدم الثلاثة) + اسم المورد عند وجوده + قسم خامس «عروض الأسعار» (بنفسجي، رقائق مفتوح/محوّل) + تلميح kbd.
+   529→- **اختصار عالمي**: Ctrl+K / ⌘K من أي شاشة يفتح البحث (لا تكرار عند التواجد فيه) + `/` خارج حقول الإدخال.
+   530→- تحقق الوكيل: PUR → 14 فاتورة شراء → نقرة → فاتورة شراء تفتح؛ QTE → 5 عروض؛ فلاتر purchases-list بلا انحدار؛ curl توافق رجعي.
+   531→
+   532→**Task 7-b — الأكثر مبيعاً + صقل جولة 2:**
+   533→- **API جديد** `GET /api/products/top?limit&days`: تجميع invoice_item (بيع مكتمل خلال 30 يوماً) بترتيب الكمية + دمج بيانات الأصناف (TopProductDto يرث ProductSearchItemDto).
+   534→- **POS**: صف رقائق أفقي «الأكثر مبيعاً ⚡» أسفل البحث (اسم + سعر + شارة N بيع + حلقة كهرمانية للرصيد المنخفض) — النقر يستدعي `pos.addProduct` نفسه (صفر منطق مكرر، نفس سلوك نتيجة البحث حرفياً).
+   535→- **صقل**: المزيد (رقائق أيقونات مصبوغة 16/16 + ألوان معايرة للمجموعات)؛ التقارير (أيقونات محصصة لكل تقرير + رفع hover)؛ الإعدادات (أيقونات + ChevronLeft)؛ لوحة نجاح POS (دائرة الصح spring + بطاقة المبالغ تنزلق بتأخير 100ms — بلا تغيير منطقي).
+   536→- ملاحظة تشغيل: خادم dev انهار أثناء الجلسة (zombie) وأعاد الوكيل تشغيله — مستقر منذئذ.
+   537→
+   538→### (ج) تحقق المنسّق بعد الدمج (تكامل 7-a × 7-b)
+   539→- **Ctrl+K من الرئيسية → البحث الشامل يفتح فوراً** ✓.
+   540→- «PUR» → فواتير شراء برقائق «شراء» وأسماء الموردين → نقرة PUR-2026-00014 → «فاتورة شراء» ✓ (رجوع يعمل).
+   541→- POS: صف «الأكثر مبيعاً ⚡» بأصناف حقيقية (سكر أبيض 101 بيع / أرز بسمتي)؛ نقرتا رقاقة أرز → كمية 2 = 19,600 ✓؛ **إتمام نقدي E2E → INV-2026-00075 (POST 200)** ✓.
+   542→- المزيد/التقارير/الإعدادات: الرقائق المصبوغة والتظليل تُرى في اللقطات؛ `agent-browser errors` صفر، console نظيف.
+   543→- lint صفر أخطاء؛ dev.log نظيف. لقطات: tmp-q/{7a-search-v2, 7b-pos-quickadd, 7b-more-polish, 7b-reports-polish, integration-more}.png.
+   544→
+   545→### (د) المتبقي / المخاطر / أولويات الجولة القادمة
+   546→1. **التواريخ بأرقام هندية** (`formatDateDisplay` منفصلة عن ISO) — ما زالت فكرة مؤجلة (مسح ~40 ملف).
+   547→2. **تسوية فرق الوردية آلياً** + مراجعة سلوك تعديل/حذف حركات الصندوق (FR-04-08).
+   548→3. **ثيم فاتح** — «قريباً» في إعدادات العرض إما يُنفَّذ (يتطلب تحويل الألوان الحرفية إلى متغيرات) أو يُحذف.
+   549→4. «الأكثر مبيعاً» تعتمد مبيعات آخر 30 يوماً — قد يُضاف لاحقاً: تخصيص المدة أو تثبيت أصناف يدوياً.
+   550→5. مراقبة استقرار خادم dev بعد إعادة تشغيله (scripts/daemon-dev.ts متاح إن مات).
+   551→
+   552→---
+   553→Task ID: 8-a
+   554→Agent: full-stack-developer
+   555→Task: تمكين الثيم الفاتح (DS-11) — متغيرات + بدائل CSS + واجهة الإعدادات
+   556→
+   557→Work Log:
+   558→- **حصر شامل قبل التنفيذ** (`rg` على src عدا print/): نصوص hex حرفية (text-[#F87171]×81، #34D399×69، #FBBF24×59، #22D3EE×21، #94A3B8×8، FB923C/A78BFA/F472B6/38BDF8/FDBA74/25D366) + خلفيات صلبة وتظليلات /N + ring-[#0F172A] + shadow-[rgba(0,0,0,…)] — ثم فحص سياق كل صنّ مشبوه (خلفيات #334155/#CBD5E1/#F1F5F9/#94A3B8 كلها داخل «معاينة الإيصال» في إعدادات الطباعة = حبر ورق صحيح في الوضعين؛ الخلفيات الصلبة الملوّنة مقرونة بنصوص داكنة #052e1c/#2b0707/#2b1a02؛ نقاط مفاتيح الرسوم يجب أن تطابق strokes الرسوم).
+   559→- **المخزن (`numbers-context.tsx`)**: حقل `theme: "dark" | "light"` + `setTheme` داخل useDisplaySettings المُخزَّن (persist باسم "app.display") — افتراضي "dark"، إضافة حقل لنفس المفتاح متوافقة رجعياً (القديم بلا theme ⇒ داكن).
+   560→- **layout.tsx**: أزلت `className="dark"` المحجوز من `<html>` (بقي suppressHydrationWarning) + **script مضمّن قبل أول رسم** (dangerouslySetInnerHTML أول عنصر في body): يقرأ localStorage "app.display" ويضيف .dark إلا إذا theme=light — فلا وميض لأحد إطلاقاً (الداكن الافتراضي يُطبَّق قبل الرسم كما كان، والفاتح المحفوظ يبقى فاتحاً من اللحظة الأولى) — هذا أفضل من الاكتفاء بـ effect (الذي كان سيومض للداكنين).
+   561→- **app-shell.tsx**: قراءة theme من المخزن + `useEffect` يزامن `document.documentElement.classList.toggle("dark", theme !== "light")` — متغيرات CSS تتتالي فوراً على كل الشاشات بلا إعادة تركيب (لم يُضَف لمفتاح remount الأرقام).
+   562→- **globals.css — كتلة `html:not(.dark)`** (خارج أي @layer ⇒ تغلب طبقة utilities): دكنة النصوص التمييزية (34D399→059669، F87171→dc2626، FBBF24→b45309، 22D3EE→0891b2، FB923C→ea580c، A78BFA→7c3aed، F472B6→db2777، 38BDF8→0284c7، FDBA74→c2410c، 94A3B8→64748b) + متغيرات /80 و/90 الشفافة + fill-[#FBBF24] (نجمة المستودع الافتراضي) + bg-[#080E1A]→#e2e8f0 (الإطار الخارجي) + ring-[#0F172A]→#f8fafc (حلقة زر البيع، عبر --tw-ring-color) + تلطيف الظلال السوداء عبر --tw-shadow (60px/0.6→rgba(15,23,42,0.16)، 12px/0.25→rgba(15,23,42,0.1)) + amount-pos/neg/due الداكنة + ألوان scrollbar-slim الفاتحة. تركتُ عمداً: الخلفيات الصلبة الملوّنة وتظليلاتها (هوية + نص داكن مقروء + مطابقة مفاتيح الرسوم)، أخضر واتساب، حبر معاينة الإيصال، bg-[#0F172A] (استخدامه الوحيد صار رقاقة أيقونة داكن في بطاقة اختيار الثيم).
+   563→- **settings-display.tsx**: بطاقتا «داكن/فاتح» صارتا زرّين فعّالين (aria-pressed + Check عند التفعيل + hover) عبر persistTheme (setTheme + PATCH /api/settings {key:"app.theme"} + toast) بنفس نمط persistNumbers/persistFontSize؛ رقاقة الشمس bg-[#FBBF24]/20 تتكيف بالبدائل تلقائياً؛ حُذفت رقاقة «قريباً» وopacity-60/aria-disabled؛ وصف الفاتح «ديناميكي حسب الإضاءة — تجربة قراءة نهارية» + سطر إيضاحي أسفل القسم؛ زر إعادة الضبط يُرجع الثيم داكناً أيضاً (التسمية كانت تقول ذلك أصلاً).
+   564→- **ملاحظة تشغيل مهمة**: أول تحرير لglobals.css لم يلتقطه مراقب Turbopack (القطعة المخدّمة بقيت بايت-لبايت قديمة — اكتشفتُه بفحص rgb(52,211,153) بدل 059669)؛ إعادة تحرير بمحتوى جديد أجبرت إعادة الترجمة فظهرت الـ 24 قاعدة — بعدها أعيد تحميل الصفحة وأُعيد كل التحقق على الـ CSS الجديد (الحالة النهائية مؤكدة: 24 مطابقة html:not(.dark) في القطعة المخدّمة).
+   565→
+   566→التحقق (bun run lint = صفر أخطاء؛ agent-browser errors فارغ طوال الجولة؛ console نظيف):
+   567→- **الداكن بلا انحدار**: الرئيسية الداكنة مطابقة (فحص الحواف: nav bar rgb(30,41,59)=#1E293B والإطار #080E1A قبل/بعد حرفياً؛ bodyBg #0F172A/fg #F1F5F9/card #1E293B) — الفروق محصورة في عمود المحتوى (بيانات جديدة فقط: INV-2026-00076 غيّرت KPIs اليوم) — لقطة 8a-dark-home-after.png للمقارنة.
+   568→- **التبديل الفوري**: نقرة «فاتح» في إعدادات العرض ⇒ html فقد .dark فوراً وbodyBg صار #F8FAFC/card #FFFFFF/localStorage حُدِّث بtheme=light وPATCH /api/settings 200 في dev.log — بلا أي وميض أو إعادة تحميل.
+   569→- **الجولة الفاتحة**: الرئيسية (بطاقات بيضاء، الإطار الخارجي #E2E8F0، الأخضر المحوّل rgb(5,150,105)=#059669 والأحمر #DC2626 والكهرماني #B45309) — لقطة 8a-light-home.png؛ POS (حقل رقم الفاتورة bg-white ونص #0F172A، رقائق «الأكثر مبيعاً» بيضاء، شريط الإجماليات) — لقطة 8a-light-pos.png؛ التقارير→حركة الشركة (KPIs بيضاء بنص داكن: 707,041/496,348/210,693/37,000 + تبويبات + جدول التفكيك) — لقطة 8a-light-reports.png؛ المزيد (كل بطاقات الوحدات)؛ الخزينة (صندوقان 323,602 ر.ي و134.51 ر.س + كشف الحركات بمبالغ مقروءة)؛ البحث الشامل «أرز» ⇒ «أرز بسمتي 5كجم … الرصيد: 49 قطعة 9,800 ر.ي» — كلها بلا أخطاء صفحة.
+   570→- **بيع نقدي كامل بالفاتح**: رقاقة أرز ×2 ⇒ إتمام نقدي ⇒ لوحة نجاح «تم حفظ الفاتورة بنجاح» INV-2026-00076 (POST /api/invoices 200 في dev.log، 09:02:59) ثم «فاتورة جديدة» تُغلق بنظافة — الثيم لا يمس المنطق.
+   571→- **العودة للداكن**: نقرة «داكن» ⇒ فوراً #0F172A/#1E293B — لقطة 8a-dark-restored.png (فحص بكسلات: الإطار rgb(8,14,26) والبطاقات rgb(30,41,59) الأصلية).
+   572→- **الثبات والترطيب**: فاتح + إعادة تحميل كاملة ⇒ يفتح فاتحاً من أول إطار (script ما قبل الرسم) بلا أي hydration errors في الكونسول (فقط رسائل HMR/DevTools).
+   573→- حلقة زر البيع الفاتحة --tw-ring-color:#F8FAFC وscrollbar rgb(203,213,225) — محققتان computed.
+   574→
+   575→Stage Summary:
+   576→- الثيم الفاتح (DS-11) مفعّل بالكامل: متجر عرض موحّد (app.display) + script ما قبل الرسم يمنع الوميض للطرفين + effect مزامنة فوري + كتلة بدائل CSS خارج الطبقات تغلب المرافق الحرفية في ~73 ملفاً دون تعديل أي ملف شاشة (نفس نهج «الواجهة أولاً» بلا اجتياح).
+   577→- القرار التصميمي المعلن: الإكسسوارات الصلبة (#34D399/#F87171/#FBBF24/#22D3EE) وتظليلاتها تبقى زاهية في الوضعين (هوية مقروءة بنصوصها الداكنة) بينما النصوص/الأيقونات الملوّنة وحدها تُدكِّن — أما حبر معاينة الإيصال فباقٍ عمداً.
+   578→- حدود معروفة (مقصودة): strokes الرسوم البيانية (#22D3EE…) تبقى زاهية على الأبيض (زُوّدت نقاط المفاتيح بقاءها متطابقة معها) وشبكة الرسم rgba(148,163,184,0.15) باهتة قليلاً؛ themeColor للـviewport ثابت كحلي (يتطلب تحديث meta ديناميكياً — غير مطلوب).
+   579→- كل القياسات خضراء: lint صفر، لا أخطاء صفحة/كونسول، POST 200، الثبات بعد إعادة التحميل بلا أخطاء ترطيب، والداكن محفوظ بلا أي انحدار (فحص بكسلات الحواف قبل/بعد).
+   580→
+   581→---
+   582→Task ID: 8-b
+   583→Agent: full-stack-developer
+   584→Task: عرض الباركود في بطاقة الصنف + طباعة ملصقات Code128
+   585→
+   586→Work Log:
+   587→- **`src/lib/barcode.ts` (جديد، خالص بلا DOM/React)**: مرمّز Code128-B كامل بدون أي حزمة خارجية — جدول الأنماط الـ107 (0..102 بيانات، 103/104/105 بدايات، 106 توقف `2331112` بعموده الختامي العريض)، خانة التحقق `((104 + Σ(i×قيمة)) % 103)`، وترجع `<svg viewBox="0 0 {موديلاﻵت} {h}">` بأعمدة `<rect>` بوحدة «موديول لكل وحدة viewBox». `code128Svg(input, {width?, height=64, showText=true, barColor="currentColor"})`: الأعمدة currentColor فترث لون النص في الوضعين؛ مع showText يتم النص داخل SVG بمقياس موحّد (بلا preserveAspectRatio ⇒ بلا تشويه)، وبلا نص يُضاف `preserveAspectRatio="none"` فيجوز تمدّد الأعمدة أفقياً (قياسي في الملصقات) والأرقام تُعرض نص HTML بضبط الطالب. `barcodeDisplayText` يقصّ أي شيء خارج [A-Za-z0-9 .-/] لسلامة العرض النصي. مدخل فارغ/غير قابل للطباعة ⇒ "".
+   588→- **التحقق من صحة الجدول (مصدران مستقلان)**: جُلب جدول عروض Wikipedia وجدول BARS الثنائي لـ JsBarcode عبر الشبكة وتطابقا 107/107 (سكربت python في /tmp)، ثم سكربت bun مؤقت قارن مخرجات `code128Svg` مستطيلاً-بمستطيل مع الترميز المرجعي لـ6 مدخلات («6281234567890»=178 موديولاً، «Hello World 123»=200، …) — تطابق كامل + EAN-13 أرقام تُرمّز سليمة في Code128 (الماسحات تقرؤه؛ لم تُلمس منطقة EAN في domain/inventory.ts ولم تُكرَّر).
+   589→- **`src/components/print/label-print.tsx` (جديد)**: `printLabelSheet({company, product, count})` بنفس نمط runPrint حرفياً — بناء `#print-root` (dir=rtl) + عنصر style بقاعدة `@page { size: A4; margin: 5mm }` + afterprint cleanup + شبكة أمان 90 ثانية + window.print() + toast نجاح. الشبكة: صفحات `.label-page` من 24 ملصقاً (3×63مم أعمدة × 8×25مم صفوف بفجوات 2مم، `page-break-after` بين الصفحات و`.last` بدونه)، كل ملصق بحد قص متقطع `1px dashed #999`: المنشأة 6pt + اسم الصنف 8pt سطران (line-clamp) + باركود SVG أسود (بلا نص داخلي، يتمدد) + الأرقام 7.5pt LTR + السعر 9pt — `labelPriceText` يحوّل السعر بأرقام غربية ثابتة + رمز العملة (استثناء مقصود من شكل الأرقام). count تُقيَّد 1..240.
+   590→- **print.css (إلحاق فقط)**: كتلة `.label-sheet/.label-page/.label-cell/.label-company/.label-name/.label-bar/.label-digits/.label-price` بوحدات mm — دون المساس بأي قاعدة قائمة.
+   591→- **بطاقة الصنف (inventory-product-card.tsx)**: قسم «الباركود» جديد (AppCard+SectionTitle+BarcodeIcon) بعد رأس الصنف مباشرة — عند وجود باركود: بطاقة مدوّرة border-border bg-card بداخلها SVG (height 64, showText) عبر dangerouslySetInnerHTML + سطر الأرقام `<span dir="ltr" font-num>` **بلا formatAmount** (استثناء موثق بتعليق: أرقام الباركود تبقى غربية حتى في الوضع الهندي — واقع المسح) + زر «نسخ» صغير (clipboard + toast «تم نسخ الباركود») + زر «طباعة ملصقات» أساسي. بلا باركود: EmptyState «لا باركود لهذا الصنف — يُولَّد تلقائياً عند حفظ صنف جديد». **نزع تراكم**: شريحة الباركود الصغيرة برأس الصنف حُذفت (القسم يملكها الآن)، وزر «ملصق باركود» القديم في شبكة الإجراءات (كان يطبع ملصقاً وهمياً `|||` عبر printBarcodeLabel) استُبدل بمسار الملصقات الجديد فصار «جرد سريع» زراً وحيداً بعرض كامل — printBarcodeLabel في receipt-print.tsx لم يُمس (ملف مهمة أخرى، غير مستخدم الآن).
+   592→- **لوحة طباعة الملصقات (PosSheet نفسها)**: عنوان + وصف (اسم الصنف + القياس)، حقل «عدد الملصقات» (number، افتراضي 24، 1..240، أرقام غربية dir=ltr) + تلميح «كل صفحة A4 تتسع لـ 24 ملصقاً (3×8)»، **معاينة ملصق واحد حية** — بطاقة بيضاء 240px بحد متقطع #94A3B8 (حبر على ورق في الوضعين عمداً): المنشأة + الاسم (سطران) + باركود أسود متمدد + الأرقام + السعر — وزر «طباعة» يستدعي printLabelSheet. tsc: عولج تضييق `p.barcode!` داخل رد النداء (الشرط أعلاه في JSX لا يصل للإغلاق).
+   593→- **قرار الجزء 4 (إجراء سريع بصف القائمة): تَجاوُل** — ListRow يرسم الصف كله كـ`<button>` واحد (لا فتحة إجراءات لكل صف)، وزر متداخل داخل زر HTML غير صالح + الطرف مكدس (شارة رصيد + سعر) — فتداخل بصمة طابعة تلوّثه؛ مسار الملصقات على بعد نقرة واحدة من بطاقة الصنف.
+   594→- **تحقق بالمتصفح (agent-browser)**: lint صفر أخطاء + tsc نظيف لكل ملفاتي (أخطاء HEAD السابقة في ملفات غيري بقيت كما هي)؛ المخزون ← أرز بسمتي 5كجم ← القسم يظهر بـSVG حقيقي (viewBox `0 0 178 64`، **49 مستطيلاً** >10، نص SVG «6281000010001»، fill=currentColor) + سطر الأرقام؛ «نسخ» ⇒ toast «تم نسخ الباركود»؛ «طباعة ملصقات» ⇒ اللوحة (24 افتراضياً + معاينة بيضاء: متجر الأمانة للتجارة / أرز بسمتي 5كجم / 6281000010001 / 9,800 ر.ي + SVG 49 مستطيلاً بتمدد none) ← «طباعة» ⇒ `#print-root` يُبنى بـ24 خلية/صفحة (فحص DOM: خلايا=24، @page A4 5mm، خلية=238×94px=63×25مم، حد متقطع) وtoast «تم إرسال 24 ملصقاً»؛ **ترقيم الصفحات**: 30 ⇒ صفحتان (24+6، الثانية `.last`)؛ الفاتح (الإعدادات ← إعدادات العرض): الباركود حبر #0F172A على بطاقة فاتحة والمعاينة بيضاء بحد متقطع وأشرطة سوداء مقروءة ثم عودة للداكن؛ صنف بلا باركود (صنف اختبار التوليد id 25) ⇒ EmptyState بالرسالة والتلميح وبلا أي زر طباعة/نسخ؛ agent-browser errors فارغة بعد مسح وإعادة تحميل، الكونسول نظيف (HMR فقط)، dev.log بلا أي 500 (أثر module-not-found عابر من `@lib/api` أثناء التحرير أصلح فوراً وأعيد الترجمة نظيفة). لقطات: tmp-q/{8b-barcode-card, 8b-label-sheet, 8b-light-card}.png + إضافتان {8b-light-sheet, 8b-no-barcode}.png.
+   595→
+   596→Stage Summary:
+   597→- اكتمل «منظومة» FR-01-02: الباركود لم يبقَ مجرد رقم مخفي في POS — يُعرض الآن رسماً قابلاً للمسح في بطاقة الصنف (Code128 حقيقي بلا مكتبات، currentColor فصحيح تلقائياً في الداكن والفاتح) ويُطبع كورقة ملصقات رف A4 (3×8 بحدود قص، حتى 240 ملصقاً بترقيم صفحات صحيح) بمعاينة حية داخل التطبيق.
+   598→- الترميز مُتحقق منه بمصدرين مستقلين + مطابقة موديول-بموديول لـ6 حالات (بما فيها EAN-13 «628…»)، بلا تكرار لمنطق EAN في domain وبلا تعديل أي API/سكيما/ملف مملوك لمهمة أخرى (print.css إلحاق فقط).
+   599→- استثناء شكل الأرقام موثق بالكود: أرقام الباركود وأسعار الملصقات غربية دائماً (واقع المسح/الرف) بلا formatAmount؛ إزالة تراكم واجهة: شريحة رأس الصنف وزر «ملصق باركود» الوهمي القديمان حُذفا لصالح القسم والمسار الجديدين.
+   600→- كل القياسات خضراء: lint صفر، tsc نظيف لملفاتي، لا أخطاء صفحة/كونسول، لا 500 في dev.log، والوضعان الداكن/الفاتح وسليمان بصرياً في اللقطات.
+   601→
+   602→---
+   603→
+   604→## 9. جولة التطوير الثالثة — (جلسة المراجعة: 2026-10-05، الجزء 3)
+   605→
+   606→**المنسّق**: QA + تطوير عبر وكلاء (Task 8-a و 8-b).
+   607→
+   608→### (أ) تقييم البداية
+   609→- الخادم حي، lint نظيف. QA بالمتصفح: الرئيسية/Ctrl+K/الأقساط (5 نشطة)/السندات/الموظفون/الرئيسية tab-stack — كلها سليمة، صفر أخطاء.
+   610→- سلوك موثق: النقر على تبويب مفتوح مسبقاً يعرض أعلى كدسه (مثل iOS) والنقر مجدداً يرجع للجذر — سليم.
+   611→
+   612→### (ب) المنجز
+   613→
+   614→**Task 8-a — تمكين الثيم الفاتح (DS-11):**
+   615→- المتجر: `theme: dark|light` مثابر (app.display) + setTheme. layout: أزيلت `class="dark"` الصلبة وحل محلها سكربت pre-paint يقرأ localStorage قبل أول رندر (صفر وميض للفئتين). AppShell: effect يزامن صنف html.
+   616→- globals.css: كتلة `html:not(.dark)` غير طبقية تعيد تعيين كل أدوات الهكس الحرفية المكتشفة بـ rg (نصوص التمييز أغمق للقراءة على الأبيض #34D399→#059669...، الخلفيات الداكنة→فاتحة، الظلال، amount-pos/neg/due، شريط التمرير) — **بلا لمس ~73 ملف شاشة**.
+   617→- الإعدادات: بطاقة «فاتح» فعلية (PATCH app.theme + toast + Check) بلا «قريباً»؛ زر الضبط يعيد الداكن أيضاً.
+   618→- تحقق الوكيل: الداكن الافتراضي مطابق بكسلياً؛ الفاتح مقروء عبر الرئيسية/POS/الأرباح/المزيد/الخزينة/البحث؛ **بيع نقدي كامل بوضع الفاتح (INV-2026-00076, POST 200)**؛ الثبات عبر إعادة التحميل بلا أخطاء ترطيب. حد معروف: خطوط الرسوم (recharts) تبقى فاتحة على الأبيض.
+   619→
+   620→**Task 8-b — الباركود وملصقاته (استكمال منظومة FR-01-02):**
+   621→- `src/lib/barcode.ts` (جديد، بلا تبعيات): مرمّز Code128-B نقي → SVG (جدول 107 أنماط تحقق ضد مصدرين مستقلين + فحص مستطيلاً-بمستطيل لمدخلات 6) مع currentColor للتوافق مع الثيمين.
+   622→- بطاقة الصنف: قسم «الباركود» (SVG 64px + الأرقام غربية عمداً — استثناء موثق لقابلية المسح + «نسخ» بـ toast) + «طباعة ملصقات» + EmptyState لمن بلا باركود. أزيل زر الملصق الوهمي القديم.
+   623→- `label-print.tsx`: ورقة A4 شبكة 3×63مم × 8×25مم = 24 ملصقاً بحدود قص متقطعة، كسر صفحات صحيح (30→صفحتان)، كل ملصق: المنشأة/الاسم/الباركود/السعر — بقالب runPrint نفسه (#print-root).
+   624→- لوحة الطباعة: عدد (افتراضي 24، 1–240) + **معاينة حية لملصق واحد** (ورق أبيض بالثيمين) + زر طباعة.
+   625→- قرار موثق: تخطي زر سريع بصفوف قائمة الأصناف (ListRow زر واحد — زر متداخل = HTML غير صالح؛ البطاقة على بعد نقرة).
+   626→
+   627→### (ج) تحقق المنسّق بعد الدمج (تكامل 8-a × 8-b)
+   628→- بطاقة أرز بسمتي: قسم الباركود 53 مستطيلاً SVG بنص 6281000010001 ✓ + «نسخ» ✓ + لوحة الملصقات (عدد 24 + معاينة + طباعة بلا أخطاء) ✓.
+   629→- **الفاتح**: body #f8fafc، البطاقات بيضاء، حبر الباركود #0F172A على أبيض — مقروء بالثيمين؛ الثبات عبر إعادة تحميل بلا وميض/أخطاء؛ عودة الداكن (body rgb(15,23,42)) ✓.
+   630→- lint صفر أخطاء؛ dev.log نظيف؛ صفر أخطاء كونسول/صفحة. لقطات: tmp-q/{integration-light, integration-light-card, 8b-barcode-card, 8b-label-sheet}.png.
+   631→
+   632→### (د) المتبقي / المخاطر / أولويات الجولة القادمة
+   633→1. خطوط recharts الفاتحة على الأبيض (حد مقبول) — تحسين لاحق: قراءة الثيم في مكونات الرسوم.
+   634→2. themeColor بالـ viewport ما زالت كحلية — تحديث ديناميكي رفيع لاحقاً.
+   635→3. **التواريخ بأرقام هندية** (`formatDateDisplay`) — ما زالت مؤجلة.
+   636→4. **تسوية فرق الوردية آلياً** + سلوك تعديل/حذف حركات الصندوق (FR-04-08).
+   637→5. ملصقات باركود: خيار أحجام حرارية 58/80مم وقراءة QR (FR-01-02 بند «رمز QR») — أفكار لاحقة.
+   638→6. مراقبة استقرار خادم dev (انهار مرة في جولة 7-b؛ daemon-dev.ts متاح).
+   639→

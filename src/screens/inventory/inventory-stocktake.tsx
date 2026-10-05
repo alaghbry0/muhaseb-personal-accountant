@@ -10,7 +10,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ClipboardList, ClipboardCheck, Loader2, CheckCircle2, History } from "lucide-react";
 import { getJson, postJson } from "@/lib/api";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
 import { useNav } from "@/lib/nav";
 import type { ProductSearchItemDto } from "@/domain/dto";
 import type { BootstrapData as BootType } from "@/lib/types";
@@ -232,7 +232,7 @@ export default function InventoryStocktakeScreen() {
                   }
                   subtitle={
                     <span className="font-num">
-                      {formatDate(s.countedAt)} • {s.linesCount} تسوية
+                      {formatDateDisplay(s.countedAt)} • {s.linesCount} تسوية
                     </span>
                   }
                   trailing={

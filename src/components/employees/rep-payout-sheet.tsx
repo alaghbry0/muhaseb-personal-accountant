@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BadgeCheck } from "lucide-react";
 import { getJson, postJson } from "@/lib/api";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
 import { PartySheet } from "@/components/parties/party-sheet";
 import { Field, DateInput } from "@/components/parties/field";
 import { PrimaryButton, AmountText, EmptyState } from "@/components/ds";
@@ -175,7 +175,7 @@ export function RepPayoutSheet({ open, onOpenChange, repId, repName }: RepPayout
                         {formatAmount(c.baseAmount, { decimals: 0, showSymbol: false })} × {c.percent}%
                       </span>
                     </span>
-                    <span className="font-num block text-[12px] text-muted-foreground">{formatDate(c.createdAt)}</span>
+                    <span className="font-num block text-[12px] text-muted-foreground">{formatDateDisplay(c.createdAt)}</span>
                   </span>
                   <AmountText value={c.amount} currency="YER" size="sm" variant="due" />
                 </button>

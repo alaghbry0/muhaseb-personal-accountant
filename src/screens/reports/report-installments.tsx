@@ -8,7 +8,8 @@ import { useQuery } from "@tanstack/react-query";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { CalendarClock } from "lucide-react";
 import { getJson } from "@/lib/api";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
+import { useChartTheme } from "@/lib/chart-theme";
 import { AppHeader, AmountText, EmptyState, SectionTitle, StatTile, StatusChip } from "@/components/ds";
 import { ReportTable, ReportToolbar } from "@/components/reports/report-table";
 import { printReport } from "@/components/print/report-print";
@@ -17,6 +18,8 @@ import type { InstallmentsReport } from "@/domain/reports";
 
 export default function ReportInstallmentsScreen() {
   const { company, baseCurrency } = usePrintCompany();
+  // ألوان الرسم حسب الثيم (داكن = الحالي حرفياً / فاتح = نظائر أدكن مقروءة)
+  const ct = useChartTheme();
   const { data, isLoading } = useQuery<InstallmentsReport>({
     queryKey: ["reports", "installments"],
     queryFn: () => getJson<InstallmentsReport>("/api/reports/installments"),
@@ -36,7 +39,7 @@ export default function ReportInstallmentsScreen() {
       title: "تقرير الأقساط",
       company,
       currency: cur,
-      periodLabel: `حتى ${formatDate(data.asOf)}`,
+      periodLabel: `حتى ${formatDateDisplay(data.asOf)}`,
       columns: [
         { key: "customer", label: "العميل", fr: 1.5 },
         { key: "invoiceNo", label: "الفاتورة" },
@@ -48,7 +51,7 @@ export default function ReportInstallmentsScreen() {
         customer: p.customerName,
         invoiceNo: p.invoiceNo ?? "خطة مستقلة",
         remaining: p.remainingBase,
-        nextDue: p.nextDue ? formatDate(p.nextDue) : "—",
+        nextDue: p.nextDue ? formatDateDisplay(p.nextDue) : "—",
         status: p.lateCount > 0 ? `متأخر (${p.lateCount})` : p.status === "completed" ? "مكتملة" : "منتظمة",
       })),
       summary: [
@@ -86,7 +89,7 @@ export default function ReportInstallmentsScreen() {
       >
         <div className="px-3 pb-3">
           <p className="text-[12.5px] text-muted-foreground">
-            المحصّل والمستحق والمتأخر + توقع التدفق النقدي — حتى {formatDate(data?.asOf ?? new Date())}
+            المحصّل والمستحق والمتأخر + توقع التدفق النقدي — حتى {formatDateDisplay(data?.asOf ?? new Date())}
           </p>
         </div>
       </AppHeader>
@@ -113,24 +116,24 @@ export default function ReportInstallmentsScreen() {
             <div dir="ltr" className="h-44 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 6, right: 6, bottom: 0, left: 6 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
-                  <XAxis dataKey="name" tick={{ fontSize: 10.5, fill: "#94A3B8" }} axisLine={{ stroke: "#334155" }} tickLine={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
+                  <XAxis dataKey="name" tick={{ fontSize: 10.5, fill: ct.axisTick }} axisLine={{ stroke: ct.axisLine }} tickLine={false} />
                   <YAxis
-                    tick={{ fontSize: 10, fill: "#94A3B8" }}
+                    tick={{ fontSize: 10, fill: ct.axisTick }}
                     axisLine={false}
                     tickLine={false}
                     width={46}
                     tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))}
                   />
                   <Tooltip
-                    contentStyle={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 12, fontSize: 12, direction: "rtl" }}
-                    labelStyle={{ color: "#F1F5F9", fontWeight: 700 }}
+                    contentStyle={{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 12, fontSize: 12, direction: "rtl", boxShadow: ct.tooltipShadow }}
+                    labelStyle={{ color: ct.tooltipLabelStrong, fontWeight: 700 }}
                     formatter={(value: number | string, _name, item) => [
                       `${formatAmount(Number(value))} (${(item as { payload?: { count?: number } })?.payload?.count ?? 0} قسط)`,
                       "المتوقع",
                     ]}
                   />
-                  <Bar dataKey="المتوقع" fill="#22D3EE" radius={[4, 4, 0, 0]} maxBarSize={34} />
+                  <Bar dataKey="المتوقع" fill={ct.line1} radius={[4, 4, 0, 0]} maxBarSize={34} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -171,7 +174,7 @@ export default function ReportInstallmentsScreen() {
               ),
             nextDue: p.nextDue ? (
               <span className={p.nextDue < (data?.asOf ?? "") ? "font-bold text-[#F87171]" : ""}>
-                {formatDate(p.nextDue)}
+                {formatDateDisplay(p.nextDue)}
               </span>
             ) : (
               "—"

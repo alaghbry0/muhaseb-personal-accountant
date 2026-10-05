@@ -9,7 +9,8 @@ import { useQuery } from "@tanstack/react-query";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { Receipt } from "lucide-react";
 import { getJson } from "@/lib/api";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
+import { useChartTheme } from "@/lib/chart-theme";
 import { AppHeader, AmountText, SectionTitle, StatTile, TrendBadge } from "@/components/ds";
 import { PeriodPicker, makePeriodState, periodLabel, type PeriodState } from "@/components/reports/period-picker";
 import { ReportTable, ReportToolbar } from "@/components/reports/report-table";
@@ -20,6 +21,8 @@ import type { ExpensesReport } from "@/domain/reports";
 export default function ReportExpensesScreen() {
   const [period, setPeriod] = useState<PeriodState>(makePeriodState("month"));
   const { company, baseCurrency } = usePrintCompany();
+  // ألوان الرسم حسب الثيم (داكن = الحالي حرفياً / فاتح = نظائر أدكن مقروءة)
+  const ct = useChartTheme();
 
   const url = `/api/reports/expenses?from=${period.from}&to=${period.to}`;
   const { data, isLoading } = useQuery<ExpensesReport>({
@@ -113,15 +116,15 @@ export default function ReportExpensesScreen() {
             <div dir="ltr" className="h-40 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 6, right: 6, bottom: 0, left: 6 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
-                  <XAxis dataKey="name" tick={{ fontSize: 9.5, fill: "#94A3B8" }} axisLine={{ stroke: "#334155" }} tickLine={false} interval="preserveStartEnd" />
-                  <YAxis tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} width={46} tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
+                  <XAxis dataKey="name" tick={{ fontSize: 9.5, fill: ct.axisTick }} axisLine={{ stroke: ct.axisLine }} tickLine={false} interval="preserveStartEnd" />
+                  <YAxis tick={{ fontSize: 10, fill: ct.axisTick }} axisLine={false} tickLine={false} width={46} tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))} />
                   <Tooltip
-                    contentStyle={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 12, fontSize: 12, direction: "rtl" }}
-                    labelStyle={{ color: "#F1F5F9", fontWeight: 700 }}
+                    contentStyle={{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 12, fontSize: 12, direction: "rtl", boxShadow: ct.tooltipShadow }}
+                    labelStyle={{ color: ct.tooltipLabelStrong, fontWeight: 700 }}
                     formatter={(value: number | string) => [formatAmount(Number(value)), "مصروفات"]}
                   />
-                  <Bar dataKey="المصروفات" fill="#F87171" radius={[4, 4, 0, 0]} maxBarSize={22} />
+                  <Bar dataKey="المصروفات" fill={ct.barNeg} radius={[4, 4, 0, 0]} maxBarSize={22} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -159,7 +162,7 @@ export default function ReportExpensesScreen() {
         ]}
         amountKeys={["amountBase"]}
         rows={(data?.rows ?? []).map((r) => ({
-          txDate: formatDate(r.txDate),
+          txDate: formatDateDisplay(r.txDate),
           categoryName: r.categoryName,
           description: r.description ?? "—",
           amountBase: r.amountBase,

@@ -8,7 +8,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Package, Search } from "lucide-react";
 import { getJson } from "@/lib/api";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
 import type { BootstrapData } from "@/lib/types";
 import { AppHeader, AmountText, EmptyState, SectionTitle, StatTile } from "@/components/ds";
 import { PeriodPicker, makePeriodState, periodLabel, type PeriodState } from "@/components/reports/period-picker";
@@ -69,7 +69,7 @@ export default function ReportItemMovementScreen() {
         { key: "balance", label: "الرصيد التراكمي" },
       ],
       rows: data.rows.map((r) => ({
-        date: formatDate(r.date),
+        date: formatDateDisplay(r.date),
         type: r.typeLabel,
         qty: r.qty > 0 ? `+${formatAmount(r.qty, { decimals: 2, showSymbol: false })}` : formatAmount(r.qty, { decimals: 2, showSymbol: false }),
         ref: r.refType === "invoice" ? `فاتورة #${r.refId}` : r.refType === "transfer" ? `تحويل #${r.refId}` : r.refType ?? "—",
@@ -194,7 +194,7 @@ export default function ReportItemMovementScreen() {
                 { key: "balance", label: "الرصيد", num: true, fr: 0.9 },
               ]}
               rows={(data?.rows ?? []).map((r) => ({
-                date: formatDate(r.date),
+                date: formatDateDisplay(r.date),
                 type: (
                   <span
                     className={cn(

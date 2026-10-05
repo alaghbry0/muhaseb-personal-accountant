@@ -7,8 +7,10 @@ export const dynamic = "force-dynamic";
 
 /**
  * POST /api/cashbox/shift/close — إقفال الوردية (FR-04-04).
- * Body: { cashboxId, counted, notes? }
+ * Body: { cashboxId, counted, notes?, reconcile? }
  * المتوقع = الرصيد المحسوب حالياً؛ الفرق = العدّ الفعلي − المتوقع.
+ * reconcile=true (Task 9-a): عند فرق ≥ 0.01 تُنشأ حركة تسوية نقدية آلياً
+ * (قبض للزيادة / صرف للعجز) فيطابق الرصيد المحسوب العدّ الفعلي.
  * إن لم تكن هناك وردية مفتوحة تُنشأ وتُقفل فوراً (تقرير لحظي).
  */
 export async function POST(req: NextRequest) {
@@ -22,6 +24,7 @@ export async function POST(req: NextRequest) {
       cashboxId: Number(body.cashboxId),
       counted: Number(body.counted),
       notes: body.notes || undefined,
+      reconcile: Boolean(body.reconcile),
     });
     return NextResponse.json(result);
   } catch (e) {

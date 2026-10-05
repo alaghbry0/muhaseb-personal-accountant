@@ -6,7 +6,7 @@
  */
 import { useState } from "react";
 import { CalendarDays, X } from "lucide-react";
-import { resolvePeriod, formatDate, type PeriodId } from "@/lib/format";
+import { resolvePeriod, formatDateDisplay, type PeriodId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export type ReportPeriodId = PeriodId | "yesterday";
@@ -94,7 +94,7 @@ export function PeriodPicker({ value, onChange, className }: PeriodPickerProps) 
       <div className="flex items-center gap-2">
         <CalendarDays className="size-4 shrink-0 text-primary/70" aria-hidden />
         <span dir="ltr" className="font-num text-[12.5px] text-muted-foreground">
-          {formatDate(value.from)} — {formatDate(value.to)}
+          {formatDateDisplay(value.from)} — {formatDateDisplay(value.to)}
         </span>
         {value.period === "custom" && !customOpen && (
           <button type="button" onClick={() => setCustomOpen(true)} className="text-[12.5px] font-bold text-primary">
@@ -142,5 +142,5 @@ export function PeriodPicker({ value, onChange, className }: PeriodPickerProps) 
 
 /** عنوان الفترة للعرض/الطباعة */
 export function periodLabel(v: PeriodState): string {
-  return `${formatDate(v.from)} — ${formatDate(v.to)}`
+  return `${formatDateDisplay(v.from)} — ${formatDateDisplay(v.to)}`
 }

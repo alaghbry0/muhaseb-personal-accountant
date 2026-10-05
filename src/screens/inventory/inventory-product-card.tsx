@@ -13,7 +13,7 @@ import {
   TrendingDown, Warehouse as WarehouseIcon, Coins, Barcode as BarcodeIcon,
 } from "lucide-react";
 import { getJson, postJson, patchJson } from "@/lib/api";
-import { formatAmount, formatDate, formatTime12 } from "@/lib/format";
+import { formatAmount, formatDateDisplay, formatTime12 } from "@/lib/format";
 import { code128Svg, barcodeDisplayText } from "@/lib/barcode";
 import { printLabelSheet, labelPriceText, LABELS_MAX } from "@/components/print/label-print";
 import { useNav } from "@/lib/nav";
@@ -383,7 +383,7 @@ export default function InventoryProductCardScreen({
                         {MOVEMENT_LABELS[m.movementType] ?? m.movementType}
                       </span>
                       <span className="font-num text-[12px] text-muted-foreground" dir="ltr">
-                        {formatDate(m.movedAt)} · {formatTime12(m.createdAt)}
+                        {formatDateDisplay(m.movedAt)} · {formatTime12(m.createdAt)}
                       </span>
                     </div>
                     <span className="mt-0.5 block truncate text-[12.5px] text-muted-foreground">

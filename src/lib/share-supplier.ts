@@ -3,7 +3,7 @@
  * (نظير shareInvoiceWhatsApp من Task 2 لكن بمصطلحات المورد/المرتجع).
  */
 import type { InvoiceDetailDto } from "@/domain/dto";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
 
 const DOC_TITLES: Record<string, string> = {
   purchase: "فاتورة شراء",
@@ -15,7 +15,7 @@ const DOC_TITLES: Record<string, string> = {
 export function buildSupplierShareText(invoice: InvoiceDetailDto, companyName: string): string {
   const cur = invoice.currencyCode;
   const title = DOC_TITLES[invoice.docType] ?? "مستند";
-  const lines: string[] = [`${companyName}`, `${title} ${invoice.invoiceNo}`, formatDate(invoice.issuedAt)];
+  const lines: string[] = [`${companyName}`, `${title} ${invoice.invoiceNo}`, formatDateDisplay(invoice.issuedAt)];
   const party =
     invoice.docType === "sale_return"
       ? invoice.customer?.name ?? "نقدي"

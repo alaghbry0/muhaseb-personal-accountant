@@ -144,6 +144,21 @@ export function formatDateTime(d: Date | string | null | undefined): string {
   return `${formatDate(dt)} ${hh}:${mm}`
 }
 
+// ═══ نسخ العرض (FR-13-05) — تواريخ بأرقام هندية حسب شكل العرض ═══
+// فرق جوهري: formatDate/formatDateTime مخارجهما تدخل حمولات API وحقول date
+// فتبقى ISO غربية دائماً. أما *Display فيُستخدم **حصرياً في نصوص العرض**
+// (JSX، قوالب الطباعة، مشاركة واتساب) فيتبع شكل الأرقام المفعّل.
+
+/** تاريخ العرض YYYY-MM-DD بشكل الأرقام المفعّل (٠-٩ عند الهندي) — للنصوص المعروضة فقط */
+export function formatDateDisplay(d: Date | string | null | undefined): string {
+  return shaped(formatDate(d))
+}
+
+/** تاريخ/وقت العرض YYYY-MM-DD HH:mm بالشكل المفعّل — للنصوص المعروضة فقط */
+export function formatDateTimeDisplay(d: Date | string | null | undefined): string {
+  return shaped(formatDateTime(d))
+}
+
 /** 15:31 → 3:31 م */
 export function formatTime12(d: Date | string | null | undefined): string {
   if (!d) return ""

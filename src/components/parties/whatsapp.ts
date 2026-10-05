@@ -4,7 +4,7 @@
  * مساعدات واتساب لوحدة الأطراف — تذكيرات الديون والأقساط وكشوف الحساب (FR-03-06، FR-05-03).
  */
 import { toast } from "sonner";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
 import { normalizeYemeniPhone } from "@/lib/share";
 
 /** فتح واتساب برسالة جاهزة (رقم اختياري — بدونه يفتح اختيار جهة) */
@@ -39,7 +39,7 @@ export function buildDebtReminderText(opts: {
     lines.push("آخر الحركات:")
     for (const r of lastRows.slice(0, 3)) {
       const v = r.debit > 0 ? `+${formatAmount(r.debit, { currency: currencyCode })}` : `−${formatAmount(r.credit, { currency: currencyCode })}`
-      lines.push(`• ${formatDate(r.date)} — ${r.docLabel}: ${v}`)
+      lines.push(`• ${formatDateDisplay(r.date)} — ${r.docLabel}: ${v}`)
     }
   }
   lines.push("شكراً لتعاملكم معنا 🙏")
@@ -63,7 +63,7 @@ export function buildInstallmentReminderText(opts: {
   lines.push(`${companyName}`)
   lines.push("──────────────")
   lines.push(
-    `تذكير وديّ بالقسط رقم ${seq} من ${installmentsCount} بقيمة ${formatAmount(remaining, { currency: currencyCode })} المستحق بتاريخ ${formatDate(dueDate)}`
+    `تذكير وديّ بالقسط رقم ${seq} من ${installmentsCount} بقيمة ${formatAmount(remaining, { currency: currencyCode })} المستحق بتاريخ ${formatDateDisplay(dueDate)}`
   )
   if (balance != null && balance > 0) {
     lines.push(`رصيدكم الحالي: ${formatAmount(balance, { currency: currencyCode })}`)

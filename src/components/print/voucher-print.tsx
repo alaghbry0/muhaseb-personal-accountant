@@ -6,7 +6,7 @@
  */
 import "./print.css";
 import { toast } from "sonner";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
 import { tafqeet } from "@/lib/tafqeet";
 import type { VoucherDto, PrintCompanyInfo } from "./voucher-types";
 
@@ -31,7 +31,7 @@ function voucherHtml(v: PrintableVoucher, company: PrintCompanyInfo): string {
 
   const meta: Array<[string, string]> = [
     ["رقم السند", v.number],
-    ["التاريخ", formatDate(v.txDate)],
+    ["التاريخ", formatDateDisplay(v.txDate)],
     [isReceipt ? "استلمنا من" : "صرفنا إلى", esc(v.partyName)],
   ];
   if (v.partyPhone) meta.push(["الهاتف", esc(v.partyPhone)]);

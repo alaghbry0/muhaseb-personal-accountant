@@ -5,7 +5,7 @@
  * يبني #print-root مخفياً يظهر وحده في وضع الطباعة (نفس آلية Task 2 بلا تعديل ملفاته).
  */
 import { toast } from "sonner";
-import { formatAmount, formatDate, ARABIC_MONTHS } from "@/lib/format";
+import { formatAmount, formatDateDisplay, ARABIC_MONTHS } from "@/lib/format";
 
 export interface PayrollPrintRow {
   employeeName: string;
@@ -70,7 +70,7 @@ export function printPayrollSheet(
       </div>
       <div style="text-align:left">
         <div style="font-size:18px;font-weight:800">مسير رواتب — ${periodTitle(period)}</div>
-        <div style="font-size:12px">تاريخ الصرف: ${formatDate(opts.txDate)} — من صندوق: ${opts.cashboxName}</div>
+        <div style="font-size:12px">تاريخ الصرف: ${formatDateDisplay(opts.txDate)} — من صندوق: ${opts.cashboxName}</div>
       </div>
     </div>
     <table style="width:100%;border-collapse:collapse;font-size:11.5px">

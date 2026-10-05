@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Plus, FileText, ArrowRightLeft, Loader2 } from "lucide-react";
 import { getJson, postJson } from "@/lib/api";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
 import { useNav } from "@/lib/nav";
 import type {
   QuotationListResponse,
@@ -192,11 +192,11 @@ export default function SalesQuotationsScreen() {
                   <span>
                     {qt.customerName ?? "بدون عميل"}
                     <span className="mx-1.5 text-border">•</span>
-                    <span className="font-num">{formatDate(qt.issuedAt)}</span>
+                    <span className="font-num">{formatDateDisplay(qt.issuedAt)}</span>
                     <span className="mx-1.5 text-border">•</span>
                     {qt.itemsCount} بنود
                     {qt.validUntil && (
-                      <span className="text-muted-foreground"> • صالح حتى {formatDate(qt.validUntil)}</span>
+                      <span className="text-muted-foreground"> • صالح حتى {formatDateDisplay(qt.validUntil)}</span>
                     )}
                   </span>
                 }
@@ -237,8 +237,8 @@ export default function SalesQuotationsScreen() {
             </DrawerTitle>
             <DrawerDescription>
               {detail
-                ? `${detail.customer?.name ?? "بدون عميل"} — ${formatDate(detail.issuedAt)}${
-                    detail.validUntil ? ` — صالح حتى ${formatDate(detail.validUntil)}` : ""
+                ? `${detail.customer?.name ?? "بدون عميل"} — ${formatDateDisplay(detail.issuedAt)}${
+                    detail.validUntil ? ` — صالح حتى ${formatDateDisplay(detail.validUntil)}` : ""
                   }`
                 : ""}
             </DrawerDescription>

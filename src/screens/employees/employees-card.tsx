@@ -12,7 +12,7 @@ import {
   CalendarCheck2, HandCoins, Wallet, Pencil, Phone, CalendarDays,
 } from "lucide-react";
 import { getJson } from "@/lib/api";
-import { formatAmount, formatDate, ARABIC_MONTHS, ARABIC_DAYS } from "@/lib/format";
+import { formatAmount, formatDateDisplay, ARABIC_MONTHS, ARABIC_DAYS } from "@/lib/format";
 import { useNav } from "@/lib/nav";
 import {
   AppHeader, AppCard, AmountText, EmptyState, SectionTitle, StatusChip, PrimaryButton,
@@ -137,7 +137,7 @@ export default function EmployeesCardScreen({ employeeId }: { employeeId?: numbe
                 {employee.hiredAt && (
                   <span className="flex items-center gap-1">
                     <CalendarDays className="size-3" aria-hidden />
-                    تعيين {formatDate(employee.hiredAt)}
+                    تعيين {formatDateDisplay(employee.hiredAt)}
                   </span>
                 )}
               </div>
@@ -264,7 +264,7 @@ export default function EmployeesCardScreen({ employeeId }: { employeeId?: numbe
                   <span className="min-w-0 flex-1">
                     <span className="block text-[14px]">{a.description || "سحبية من الراتب"}</span>
                     <span className="font-num block text-[12px] text-muted-foreground">
-                      {formatDate(a.txDate)} — {a.currency.code === "YER" ? "ر.ي" : a.currency.code}
+                      {formatDateDisplay(a.txDate)} — {a.currency.code === "YER" ? "ر.ي" : a.currency.code}
                     </span>
                   </span>
                   <AmountText value={a.amount} currency={a.currency.code} size="sm" variant="neg" />

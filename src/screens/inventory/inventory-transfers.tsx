@@ -11,7 +11,7 @@ import {
   ArrowLeftRight, Loader2, PackageSearch, ArrowLeft, ArrowRight, X,
 } from "lucide-react";
 import { getJson, postJson } from "@/lib/api";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
 import type { ProductSearchItemDto } from "@/domain/dto";
 import type { BootstrapData as BootType } from "@/lib/types";
 import { AppHeader, ListRow, PrimaryButton, EmptyState, SectionTitle, SearchBar } from "@/components/ds";
@@ -244,7 +244,7 @@ export default function InventoryTransfersScreen() {
                   title={<span className="text-[14.5px]">{t.productName}</span>}
                   subtitle={
                     <span className="font-num">
-                      {formatDate(t.movedAt)} • {t.fromWarehouse} ← {t.toWarehouse}
+                      {formatDateDisplay(t.movedAt)} • {t.fromWarehouse} ← {t.toWarehouse}
                     </span>
                   }
                   trailing={

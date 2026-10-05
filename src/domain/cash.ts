@@ -478,6 +478,198 @@ async function ensureBoxNotNegative(
   }
 }
 
+// ─── تعديل/حذف حركة يدوية (FR-04-08 — Task 9-a) ───
+
+/** رسالة حماية الحركات المرتبطة بمستندات */
+const PROTECTED_TX_MSG =
+  "حركة مرتبطة بمستند (فاتورة/سند/قسط/رواتب/عمولة) — تُدار من مصدرها"
+
+/**
+ * مساهمة حركة على رصيد صندوق معيّن بعملة ذلك الصندوق — نفس منطق
+ * computeCashboxBalance حرفياً (الإشارة + تحويل العملة عبر rateAt بتاريخ الحركة).
+ */
+async function txContributionOn(
+  tx: Tx,
+  row: { txType: string; currencyId: number; amount: number; exchangeRate: number },
+  side: "cashbox" | "to",
+  boxCurrencyId: number,
+  date: string
+): Promise<number> {
+  const sign =
+    side === "cashbox"
+      ? (SIGN_CASHBOX[row.txType as CashTxType] ?? 0)
+      : (SIGN_TO[row.txType as CashTxType] ?? 0)
+  if (sign === 0) return 0
+  let amount = row.amount
+  if (row.currencyId !== boxCurrencyId) {
+    const boxRate = await rateAt(tx, boxCurrencyId, date)
+    if (boxRate <= 0) return 0
+    amount = (row.amount * (row.exchangeRate || 1)) / boxRate
+  }
+  return sign * amount
+}
+
+/** جلب حركة واحدة كاملة DTO — أو null */
+export async function getCashTx(db: AnyDb, id: number): Promise<CashTxDto | null> {
+  const row = await db.cashTx.findUnique({ where: { id }, include: txInclude })
+  return row ? toCashTxDto(row) : null
+}
+
+export interface UpdateCashTxPayload {
+  amount?: number
+  txDate?: string
+  description?: string | null
+}
+
+/**
+ * تعديل حركة نقدية يدوية (FR-04-08) — الحقول القابلة للتعديل حصراً:
+ * amount / txDate / description (النوع والصندوق والطرف ثابتون).
+ * الحركات المرتبطة بمستند (refType ≠ null) محمية وتُدار من مصدرها.
+ * حارس الرصيد: محاكاة أثر التعديل على الصندوق (والوجهة إن وجدت) قبل الكتابة.
+ */
+export async function updateCashTx(
+  db: PrismaClient,
+  id: number,
+  payload: UpdateCashTxPayload
+): Promise<{ tx: CashTxDto; cashboxBalance: number; toCashboxBalance: number | null }> {
+  return db.$transaction(async (tx) => {
+    const row = await tx.cashTx.findUnique({
+      where: { id },
+      include: { cashbox: true, toCashbox: true, currency: true },
+    })
+    if (!row) throw new DomainError("الحركة غير موجودة", 404)
+    if (row.refType != null) throw new DomainError(PROTECTED_TX_MSG)
+
+    // ─── القيم الجديدة ───
+    const newAmount = payload.amount !== undefined ? Number(payload.amount) : row.amount
+    if (!(newAmount > 0)) throw new DomainError("المبلغ يجب أن يكون أكبر من صفر")
+    const newDate = payload.txDate !== undefined ? payload.txDate : row.txDate
+    if (typeof newDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
+      throw new DomainError("تاريخ الحركة غير صالح (YYYY-MM-DD)")
+    }
+    const newDescription =
+      payload.description === undefined
+        ? row.description
+        : payload.description?.trim()
+          ? payload.description.trim()
+          : null
+
+    // ─── حارس الرصيد: محاكاة الأثر قبل الكتابة ───
+    const box = await tx.cashbox.findUnique({
+      where: { id: row.cashboxId },
+      include: { currency: true },
+    })
+    if (!box) throw new DomainError("الصندوق غير موجود", 404)
+
+    const oldRow = {
+      txType: row.txType,
+      currencyId: row.currencyId,
+      amount: row.amount,
+      exchangeRate: row.exchangeRate,
+    }
+    const newRow = { ...oldRow, amount: newAmount }
+
+    const balance = await computeCashboxBalance(tx, box.id)
+    const oldOnBox = await txContributionOn(tx, oldRow, "cashbox", box.currencyId, row.txDate)
+    const newOnBox = await txContributionOn(tx, newRow, "cashbox", box.currencyId, newDate)
+    const resultingBox = round2(balance - oldOnBox + newOnBox)
+    if (resultingBox < -0.01) {
+      throw new DomainError(
+        `رصيد الصندوق «${box.name}» لا يسمح — المتاح بعد التعديل: ${resultingBox.toLocaleString("en-US")} ${box.currency.code}`
+      )
+    }
+
+    // الوجهة (تحويل/بنكي بين صندوقين — قد تختلف عملتها فتُحاكى بالتحويل كما بالأرصدة)
+    let toBoxId: number | null = null
+    if (row.toCashboxId) {
+      const toBox = await tx.cashbox.findUnique({
+        where: { id: row.toCashboxId },
+        include: { currency: true },
+      })
+      if (toBox) {
+        toBoxId = toBox.id
+        const toBalance = await computeCashboxBalance(tx, toBox.id)
+        const oldOnTo = await txContributionOn(tx, oldRow, "to", toBox.currencyId, row.txDate)
+        const newOnTo = await txContributionOn(tx, newRow, "to", toBox.currencyId, newDate)
+        const resultingTo = round2(toBalance - oldOnTo + newOnTo)
+        if (resultingTo < -0.01) {
+          throw new DomainError(
+            `رصيد الصندوق «${toBox.name}» لا يسمح — المتاح بعد التعديل: ${resultingTo.toLocaleString("en-US")} ${toBox.currency.code}`
+          )
+        }
+      }
+    }
+
+    const updated = await tx.cashTx.update({
+      where: { id },
+      data: { amount: round4(newAmount), txDate: newDate, description: newDescription },
+      include: txInclude,
+    })
+    const cashboxBalance = await computeCashboxBalance(tx, box.id)
+    const toCashboxBalance = toBoxId ? await computeCashboxBalance(tx, toBoxId) : null
+    return { tx: toCashTxDto(updated), cashboxBalance, toCashboxBalance }
+  })
+}
+
+/**
+ * حذف حركة نقدية يدوية (FR-04-08) — المرتبطة بمستند ممنوعة،
+ * ولا يجوز أن يُنزل الحذف رصيد أي صندوق تحت الصفر.
+ */
+export async function deleteCashTx(
+  db: PrismaClient,
+  id: number
+): Promise<{ ok: true; cashboxBalance: number }> {
+  return db.$transaction(async (tx) => {
+    const row = await tx.cashTx.findUnique({
+      where: { id },
+      include: { cashbox: true, toCashbox: true, currency: true },
+    })
+    if (!row) throw new DomainError("الحركة غير موجودة", 404)
+    if (row.refType != null) throw new DomainError(PROTECTED_TX_MSG)
+
+    const box = await tx.cashbox.findUnique({
+      where: { id: row.cashboxId },
+      include: { currency: true },
+    })
+    if (!box) throw new DomainError("الصندوق غير موجود", 404)
+
+    const contrib = {
+      txType: row.txType,
+      currencyId: row.currencyId,
+      amount: row.amount,
+      exchangeRate: row.exchangeRate,
+    }
+    const balance = await computeCashboxBalance(tx, box.id)
+    const onBox = await txContributionOn(tx, contrib, "cashbox", box.currencyId, row.txDate)
+    const resultingBox = round2(balance - onBox)
+    if (resultingBox < -0.01) {
+      throw new DomainError(
+        `رصيد الصندوق «${box.name}» لا يسمح — المتاح بعد الحذف: ${resultingBox.toLocaleString("en-US")} ${box.currency.code}`
+      )
+    }
+    if (row.toCashboxId) {
+      const toBox = await tx.cashbox.findUnique({
+        where: { id: row.toCashboxId },
+        include: { currency: true },
+      })
+      if (toBox) {
+        const toBalance = await computeCashboxBalance(tx, toBox.id)
+        const onTo = await txContributionOn(tx, contrib, "to", toBox.currencyId, row.txDate)
+        const resultingTo = round2(toBalance - onTo)
+        if (resultingTo < -0.01) {
+          throw new DomainError(
+            `رصيد الصندوق «${toBox.name}» لا يسمح — المتاح بعد الحذف: ${resultingTo.toLocaleString("en-US")} ${toBox.currency.code}`
+          )
+        }
+      }
+    }
+
+    await tx.cashTx.delete({ where: { id } })
+    const cashboxBalance = await computeCashboxBalance(tx, box.id)
+    return { ok: true as const, cashboxBalance }
+  })
+}
+
 // ─── سجل الحركات ───
 
 export async function listCashTx(
@@ -605,6 +797,8 @@ async function shiftBreakdown(tx: Tx, cashboxId: number, from: string): Promise<
     net: 0,
   }
   for (const r of rows) {
+    // حركات تسوية الفرق (إقفال وردية) ليست نشاطاً تجارياً — تُستثنى من التصنيف
+    if (r.refType === "shift_reconcile") continue
     const onSource = r.cashboxId === cashboxId
     switch (r.txType) {
       case "receipt":
@@ -733,12 +927,21 @@ export interface CloseShiftResult {
   counted: number
   difference: number
   breakdown: ShiftBreakdown
+  /** هل أُنشئت حركة تسوية للفرق آلياً */
+  reconciled: boolean
+  reconcileTxId: number | null
 }
 
-/** إقفال الوردية — FR-04-04: المتوقع (الرصيد المحسوب) مقابل العدّ الفعلي */
+/**
+ * إقفال الوردية — FR-04-04: المتوقع (الرصيد المحسوب) مقابل العدّ الفعلي.
+ * reconcile=true (Task 9-a): عند فرق ≥ 0.01 تُنشأ داخل نفس المعاملة حركة
+ * تسوية نقدية (receipt للزيادة / payment للعجز) بـ refType='shift_reconcile'
+ * و refId=رقم الوردية — فتصبح محمية من التعديل/الحذف اليدوي ويطابق رصيد
+ * الصندوق المحسوب العدّ الفعلي بعد الإقفال.
+ */
 export async function closeShift(
   db: PrismaClient,
-  payload: { cashboxId: number; counted: number; notes?: string }
+  payload: { cashboxId: number; counted: number; notes?: string; reconcile?: boolean }
 ): Promise<CloseShiftResult> {
   return db.$transaction(async (tx) => {
     const box = await tx.cashbox.findUnique({ where: { id: payload.cashboxId }, include: { currency: true } })
@@ -763,7 +966,34 @@ export async function closeShift(
       where: { id: shift.id },
       data: { closedAt, expected, counted, difference, notes: payload.notes ?? shift.notes },
     })
+    // التصنيف يُحسب قبل حركة التسوية — يبقى انعكاساً لنشاط الوردية نفسها
     const breakdown = await shiftBreakdown(tx, box.id, shiftStartDate(shift.openedAt))
+
+    // ─── تسوية الفرق آلياً كحركة نقدية ───
+    let reconciled = false
+    let reconcileTxId: number | null = null
+    if (payload.reconcile && Math.abs(difference) >= 0.01) {
+      const reconcileTx = await tx.cashTx.create({
+        data: {
+          txType: difference > 0 ? "receipt" : "payment",
+          cashboxId: box.id,
+          toCashboxId: null,
+          currencyId: box.currencyId,
+          amount: round2(Math.abs(difference)),
+          exchangeRate: box.currency.isBase ? 1 : await rateAt(tx, box.currencyId, todayStr()),
+          txDate: todayStr(),
+          refType: "shift_reconcile",
+          refId: shift.id,
+          description:
+            difference > 0
+              ? `تسوية زيادة عدّ — إقفال الوردية #${shift.id}`
+              : `تسوية عجز عدّ — إقفال الوردية #${shift.id}`,
+        },
+      })
+      reconciled = true
+      reconcileTxId = reconcileTx.id
+    }
+
     return {
       shiftId: shift.id,
       cashboxName: box.name,
@@ -774,6 +1004,8 @@ export async function closeShift(
       counted,
       difference,
       breakdown,
+      reconciled,
+      reconcileTxId,
     }
   })
 }

@@ -73,9 +73,19 @@ export function AppShell() {
     scrollRef.current?.scrollTo({ top: 0 });
   }, [seq, activeTab]);
 
-  // مزامنة صنّ .dark مع الثيم المختار (المخزن المحلي) — فوري على كل التطبيق
+  // مزامنة صنّ .dark مع الثيم المختار (المخزن المحلي) — فوري على كل التطبيق —
+  // ومعه <meta name="theme-color"> (لون شريط المتصفح/النظام على الجوال):
+  // كحلي DS-01 في الداكن ورمادي الثيم الفاتح في الفاتح (layout يزرعه #0F172A مبدئياً).
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme !== "light");
+    const isDark = theme !== "light";
+    document.documentElement.classList.toggle("dark", isDark);
+    let meta = document.head.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "theme-color";
+      document.head.appendChild(meta);
+    }
+    meta.content = isDark ? "#0F172A" : "#F8FAFC";
   }, [theme]);
 
   // اختصار لوحة المفاتيح (7-a): Ctrl+K / ⌘K يفتح «البحث الشامل» من أي شاشة،

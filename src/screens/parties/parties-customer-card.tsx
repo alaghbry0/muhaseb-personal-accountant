@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { getJson, patchJson } from "@/lib/api";
-import { formatAmount, formatDate, resolvePeriod } from "@/lib/format";
+import { formatAmount, formatDate, formatDateDisplay, resolvePeriod } from "@/lib/format";
 import { useNav } from "@/lib/nav";
 import type { CustomerDto, StatementResult } from "@/domain/parties";
 import type { BootstrapData } from "@/lib/types";
@@ -134,7 +134,7 @@ export default function PartiesCustomerCardScreen({ customerId }: { customerId?:
       `مرحباً ${customer.name} 🌹`,
       `${boot.company.name}`,
       "──────────────",
-      `كشف حسابكم${st.from ? ` عن الفترة من ${formatDate(st.from)}${st.to ? ` إلى ${formatDate(st.to)}` : ""}` : ""}`,
+      `كشف حسابكم${st.from ? ` عن الفترة من ${formatDateDisplay(st.from)}${st.to ? ` إلى ${formatDateDisplay(st.to)}` : ""}` : ""}`,
       `رصيد أول الفترة: ${formatAmount(st.openingBalance, { currency: st.baseCurrencyCode })}`,
       `إجمالي المدين: ${formatAmount(st.totals.debit, { currency: st.baseCurrencyCode })}`,
       `إجمالي الدائن: ${formatAmount(st.totals.credit, { currency: st.baseCurrencyCode })}`,
@@ -305,7 +305,7 @@ export default function PartiesCustomerCardScreen({ customerId }: { customerId?:
                           قسط #{o.seq} {o.invoiceNo ? `— ${o.invoiceNo}` : ""}
                         </span>
                         <span className="block font-num text-[12px] text-[#F87171]">
-                          استحق {formatDate(o.dueDate)}
+                          استحق {formatDateDisplay(o.dueDate)}
                         </span>
                       </span>
                       <AmountText value={o.remaining} currency="YER" size="md" variant="neg" />
@@ -403,7 +403,7 @@ export default function PartiesCustomerCardScreen({ customerId }: { customerId?:
                             )}
                           >
                             <td className="py-1.5 font-num text-muted-foreground">
-                              {r.date ? formatDate(r.date) : "—"}
+                              {r.date ? formatDateDisplay(r.date) : "—"}
                             </td>
                             <td className="max-w-28 truncate py-1.5">
                               {r.docNo ? <span className="font-num">{r.docNo}</span> : r.docLabel}
@@ -477,7 +477,7 @@ export default function PartiesCustomerCardScreen({ customerId }: { customerId?:
                         <StatusChip status={inv.payStatus} />
                       </span>
                       <span className="font-num block text-[12px] text-muted-foreground">
-                        {formatDate(inv.issuedAt)}
+                        {formatDateDisplay(inv.issuedAt)}
                       </span>
                     </span>
                     <span className="flex flex-col items-end">

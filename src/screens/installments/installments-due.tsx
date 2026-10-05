@@ -9,7 +9,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarClock, CalendarDays, AlarmClock, Phone } from "lucide-react";
 import { getJson } from "@/lib/api";
-import { formatDate, formatAmount } from "@/lib/format";
+import { formatDateDisplay, formatAmount } from "@/lib/format";
 import type { BootstrapData } from "@/lib/types";
 import type { DueItem } from "@/domain/installments";
 import {
@@ -229,7 +229,7 @@ function DueRow({
             قسط #{item.seq}/{item.installmentsCount}
           </span>
           <span>•</span>
-          <span>استحقاق {formatDate(item.dueDate)}</span>
+          <span>استحقاق {formatDateDisplay(item.dueDate)}</span>
           {item.invoiceNo && (
             <>
               <span>•</span>

@@ -7,12 +7,13 @@
  */
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Wallet, Clock, PlayCircle, StopCircle, Printer, History, CheckCircle2, XCircle } from "lucide-react";
+import { Wallet, Clock, PlayCircle, StopCircle, Printer, History, CheckCircle2, XCircle, BadgeDollarSign } from "lucide-react";
 import { toast } from "sonner";
 import { getJson, postJson } from "@/lib/api";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import { useNav } from "@/lib/nav";
 import { AppHeader, AmountText, EmptyState, KeyValueRow, ListRow, PrimaryButton, SectionTitle } from "@/components/ds";
+import { Checkbox } from "@/components/ui/checkbox";
 import { PosSheet } from "@/components/pos/pos-sheet";
 import { printShiftReport } from "@/components/cash/shift-print";
 import { usePrintCompany } from "@/components/reports/csv";
@@ -32,6 +33,8 @@ export default function CashShiftScreen(params: { cashboxId?: number }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [result, setResult] = useState<CloseShiftResult | null>(null);
+  /** تسجيل تسوية الفرق تلقائياً كحركة نقدية (FR-04-04 — Task 9-a) */
+  const [reconcile, setReconcile] = useState(true);
 
   const { data: boxesData } = useQuery<BoxesResponse>({
     queryKey: ["cashbox", "boxes"],
@@ -78,6 +81,7 @@ export default function CashShiftScreen(params: { cashboxId?: number }) {
       const res = await postJson<CloseShiftResult>("/api/cashbox/shift/close", {
         cashboxId: activeBoxId,
         counted: n,
+        reconcile,
       });
       setResult(res);
       setConfirmOpen(false);
@@ -314,6 +318,27 @@ export default function CashShiftScreen(params: { cashboxId?: number }) {
               />
             </div>
           )}
+          {/* تسوية الفرق آلياً — FR-04-04 */}
+          <label
+            htmlFor="shift-reconcile"
+            className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/60 bg-card p-3.5 transition-colors hover:bg-accent/30"
+          >
+            <Checkbox
+              id="shift-reconcile"
+              checked={reconcile}
+              onCheckedChange={(v) => setReconcile(v === true)}
+              className="mt-0.5 size-[18px]"
+            />
+            <span className="flex flex-col gap-0.5">
+              <span className="text-[13.5px] font-bold text-foreground">
+                تسجيل تسوية الفرق تلقائياً كحركة نقدية
+              </span>
+              <span className="text-[11.5px] leading-relaxed text-muted-foreground">
+                عند وجود فرق بين العدّ الفعلي والرصيد المحسوب تُنشأ حركة نقدية (قبض للزيادة / صرف للعجز)
+                تعادل الفرق فيطابق رصيد الصندوق العدّ الفعلي — وتكون محمية من التعديل والحذف اليدوي.
+              </span>
+            </span>
+          </label>
           <div className="flex gap-2">
             <PrimaryButton variant="outline" onClick={() => setConfirmOpen(false)} block>
               رجوع
@@ -361,6 +386,30 @@ export default function CashShiftScreen(params: { cashboxId?: number }) {
               <KeyValueRow label="المتوقع (محسوب)" value={formatAmount(result.expected, { currency: result.currencyCode })} />
               <KeyValueRow label="العدّ الفعلي" value={formatAmount(result.counted, { currency: result.currencyCode })} />
             </div>
+            {result.reconciled && (
+              <div
+                className={cn(
+                  "flex items-center justify-between gap-2 rounded-xl border p-3",
+                  result.difference > 0
+                    ? "border-[#FBBF24]/40 bg-[#FBBF24]/10"
+                    : "border-[#F87171]/40 bg-[#F87171]/10"
+                )}
+              >
+                <span className="flex items-center gap-1.5 text-[13px] font-bold text-foreground">
+                  <BadgeDollarSign
+                    className={cn("size-4", result.difference > 0 ? "text-[#FBBF24]" : "text-[#F87171]")}
+                    aria-hidden
+                  />
+                  تم إنشاء حركة تسوية بمبلغ
+                </span>
+                <AmountText
+                  value={Math.abs(result.difference)}
+                  currency={result.currencyCode}
+                  size="md"
+                  variant={result.difference > 0 ? "due" : "neg"}
+                />
+              </div>
+            )}
             <button
               type="button"
               onClick={() => printShiftReport(result, company)}

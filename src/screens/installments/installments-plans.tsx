@@ -12,7 +12,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Plus, CalendarClock, ChevronRight, FileText, Coins } from "lucide-react";
 import { getJson, postJson } from "@/lib/api";
-import { formatDate, formatAmount } from "@/lib/format";
+import { formatDate, formatDateDisplay, formatAmount } from "@/lib/format";
 import { useNav } from "@/lib/nav";
 import type { CustomerDto } from "@/domain/parties";
 import type { InstallmentPlanDto, InstallmentDto, InstallmentCycle } from "@/domain/installments";
@@ -197,7 +197,7 @@ function PlansList({ onOpenPlan, onRefresh }: { onOpenPlan: (id: number) => void
                               : "border-border bg-muted/50 text-muted-foreground"
                         )}
                       >
-                        {nextLate ? "متأخر" : "القادم"} {formatDate(p.nextDue)}
+                        {nextLate ? "متأخر" : "القادم"} {formatDateDisplay(p.nextDue)}
                         {p.nextDueAmount != null && (
                           <span className="font-num"> — {formatAmount(p.nextDueAmount, { currency: p.currencyCode })}</span>
                         )}
@@ -280,7 +280,7 @@ function PlanDetail({ planId }: { planId: number }) {
             <KeyValueRow label="المحصّل" value={<AmountText value={plan.totalPaid} currency={plan.currencyCode} size="sm" variant="pos" />} />
             <KeyValueRow label="المتبقي" value={<AmountText value={plan.remaining} currency={plan.currencyCode} size="sm" variant="due" />} />
             <KeyValueRow label="الدورية" value={`${plan.installmentsCount} قسط ${CYCLE_LABEL[plan.cycle]}`} />
-            <KeyValueRow label="أول استحقاق" value={<span className="font-num">{formatDate(plan.firstDue)}</span>} />
+            <KeyValueRow label="أول استحقاق" value={<span className="font-num">{formatDateDisplay(plan.firstDue)}</span>} />
           </AppCard>
 
           {hasLate && plan.status !== "completed" && (
@@ -316,7 +316,7 @@ function PlanDetail({ planId }: { planId: number }) {
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="font-num text-[13.5px]">{formatDate(inst.dueDate)}</span>
+                    <span className="font-num text-[13.5px]">{formatDateDisplay(inst.dueDate)}</span>
                     <StatusChip
                       status={inst.status === "paid" ? "paid" : inst.status === "partial" ? "partial" : inst.isLate ? "late" : "pending"}
                       label={inst.status === "paid" ? "مسدد" : inst.status === "partial" ? "جزئي" : inst.isLate ? `متأخر` : "مستحق"}
@@ -339,7 +339,7 @@ function PlanDetail({ planId }: { planId: number }) {
                   </PrimaryButton>
                 ) : (
                   <span className="text-[11.5px] text-[#34D399]">
-                    {inst.paidAt ? formatDate(inst.paidAt) : ""}
+                    {inst.paidAt ? formatDateDisplay(inst.paidAt) : ""}
                   </span>
                 )}
               </div>
@@ -590,7 +590,7 @@ function NewPlanSheet({
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block font-num font-bold">{inv.invoiceNo}</span>
-                      <span className="block text-[11.5px] text-muted-foreground">{formatDate(inv.issuedAt)}</span>
+                      <span className="block text-[11.5px] text-muted-foreground">{formatDateDisplay(inv.issuedAt)}</span>
                     </span>
                     <AmountText value={inv.dueAmount} currency={inv.currencyCode} size="sm" variant="due" />
                   </button>
@@ -641,7 +641,7 @@ function NewPlanSheet({
                   <span className="text-muted-foreground">
                     قسط <span className="font-num">#{s.seq}</span>
                   </span>
-                  <span className="font-num">{formatDate(s.dueDate)}</span>
+                  <span className="font-num">{formatDateDisplay(s.dueDate)}</span>
                   <AmountText value={s.amount} currency="YER" size="sm" />
                 </div>
               ))}

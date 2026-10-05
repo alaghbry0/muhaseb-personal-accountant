@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { getJson, postJson } from "@/lib/api";
 import { AppHeader, AppCard, PrimaryButton, StatusChip } from "@/components/ds";
 import { useFormatD } from "@/components/settings/numbers-context";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTimeDisplay } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const APP_VERSION = "1.0.0";
@@ -162,7 +162,7 @@ export default function SettingsAboutScreen() {
                 <span className="text-[14.5px] font-extrabold text-foreground">فحص سلامة القاعدة</span>
                 {check ? (
                   <span className="text-[11.5px] text-muted-foreground">
-                    آخر فحص: {formatDateTime(check.checkedAt)} —{" "}
+                    آخر فحص: {formatDateTimeDisplay(check.checkedAt)} —{" "}
                     {check.ok ? "سليمة" : "تحتاج مراجعة"}
                   </span>
                 ) : (

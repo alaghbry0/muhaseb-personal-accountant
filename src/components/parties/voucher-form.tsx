@@ -10,7 +10,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Printer, Check, Link2 } from "lucide-react";
 import { getJson, postJson } from "@/lib/api";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
 import { todayStr } from "@/domain/parties";
 import type { VoucherDto, VoucherKind, PartyType } from "@/domain/parties";
 import type { BootstrapData } from "@/lib/types";
@@ -382,7 +382,7 @@ export function VoucherForm({
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block font-num font-bold">{inv.invoiceNo}</span>
-                      <span className="block text-[11.5px] text-muted-foreground">{formatDate(inv.issuedAt)}</span>
+                      <span className="block text-[11.5px] text-muted-foreground">{formatDateDisplay(inv.issuedAt)}</span>
                     </span>
                     <AmountText value={inv.dueAmount} currency={inv.currencyCode} size="sm" variant="due" />
                   </button>

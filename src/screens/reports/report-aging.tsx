@@ -8,7 +8,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Clock4 } from "lucide-react";
 import { getJson } from "@/lib/api";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
 import { AppHeader, AmountText, EmptyState, SectionTitle } from "@/components/ds";
 import { ReportTable, ReportToolbar } from "@/components/reports/report-table";
 import { printReport } from "@/components/print/report-print";
@@ -42,7 +42,7 @@ export default function ReportAgingScreen() {
       title: "أعمار الديون (العملاء)",
       company,
       currency: cur,
-      periodLabel: `حتى ${formatDate(data.asOf)}`,
+      periodLabel: `حتى ${formatDateDisplay(data.asOf)}`,
       columns: [
         { key: "name", label: "العميل", fr: 1.6 },
         { key: "d30", label: "0–30", num: true },
@@ -95,7 +95,7 @@ export default function ReportAgingScreen() {
       >
         <div className="px-3 pb-3">
           <p className="text-[12.5px] text-muted-foreground">
-            أرصدة العملاء موزعة حسب عمر الدين — حتى {formatDate(data?.asOf ?? new Date())}
+            أرصدة العملاء موزعة حسب عمر الدين — حتى {formatDateDisplay(data?.asOf ?? new Date())}
           </p>
         </div>
       </AppHeader>
@@ -154,7 +154,7 @@ export default function ReportAgingScreen() {
             name: (
               <span className="flex flex-col">
                 <span className="truncate font-medium">{r.name}</span>
-                {r.oldestDate && <span className="font-num text-[11px] text-muted-foreground">أقدم دين {formatDate(r.oldestDate)}</span>}
+                {r.oldestDate && <span className="font-num text-[11px] text-muted-foreground">أقدم دين {formatDateDisplay(r.oldestDate)}</span>}
               </span>
             ),
             d30: r.buckets.d30 || "—",

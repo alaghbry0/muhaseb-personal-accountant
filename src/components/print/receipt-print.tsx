@@ -7,7 +7,7 @@
  */
 import "./print.css";
 import { toast } from "sonner";
-import { formatAmount, formatDate, formatTime12 } from "@/lib/format";
+import { formatAmount, formatDateDisplay, formatTime12 } from "@/lib/format";
 import type { InvoiceDetailDto } from "@/domain/dto";
 
 export interface PrintCompanyInfo {
@@ -56,7 +56,7 @@ function receiptHtml(invoice: InvoiceDetailDto, opts: PrintInvoiceOptions): stri
 
   const meta: Array<[string, string]> = [
     ["رقم الفاتورة", invoice.invoiceNo],
-    ["التاريخ", formatDate(invoice.issuedAt)],
+    ["التاريخ", formatDateDisplay(invoice.issuedAt)],
     ["الوقت", formatTime12(invoice.createdAt)],
     ["العميل", invoice.customer?.name ?? "نقدي"],
   ];
@@ -186,7 +186,7 @@ function a4Html(invoice: InvoiceDetailDto, opts: PrintInvoiceOptions): string {
       <div class="a4-invbox">
         <h2>فاتورة مبيعات</h2>
         <div class="rc-row"><span>الرقم</span><span class="rc-val">${esc(invoice.invoiceNo)}</span></div>
-        <div class="rc-row"><span>التاريخ</span><span class="rc-val">${formatDate(invoice.issuedAt)}</span></div>
+        <div class="rc-row"><span>التاريخ</span><span class="rc-val">${formatDateDisplay(invoice.issuedAt)}</span></div>
         <div class="rc-row"><span>الوقت</span><span class="rc-val">${formatTime12(invoice.createdAt)}</span></div>
         <div class="rc-row"><span>العملة</span><span class="rc-val">${esc(cur)}</span></div>
       </div>
@@ -326,7 +326,7 @@ export function printDocument(
 
   const meta: Array<[string, string]> = [
     ["رقم المستند", invoice.invoiceNo],
-    ["التاريخ", formatDate(invoice.issuedAt)],
+    ["التاريخ", formatDateDisplay(invoice.issuedAt)],
     ["الوقت", formatTime12(invoice.createdAt)],
     [partyLabel, partyName],
   ];

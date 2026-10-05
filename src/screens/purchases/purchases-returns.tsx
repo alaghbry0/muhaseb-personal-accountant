@@ -16,7 +16,7 @@ import {
   Info, Save,
 } from "lucide-react";
 import { getJson, postJson } from "@/lib/api";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
 import { useNav } from "@/lib/nav";
 import { calcInvoiceTotals } from "@/domain/invoice";
 import type { InvoiceDetailDto, ProductSearchItemDto } from "@/domain/dto";
@@ -276,7 +276,7 @@ function ReturnsBody({
               </span>
             </div>
             <div className="flex items-center justify-between text-[12.5px] text-muted-foreground">
-              <span>{formatDate(original.issuedAt)}</span>
+              <span>{formatDateDisplay(original.issuedAt)}</span>
               <span>{party?.name ?? (mode === "sale_return" ? "عميل نقدي" : "مورد نقدي")}</span>
             </div>
             {refundMethod === "cash" && original.payStatus === "credit" && (

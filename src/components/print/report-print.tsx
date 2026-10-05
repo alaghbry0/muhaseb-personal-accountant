@@ -7,7 +7,7 @@
  */
 import "./print.css";
 import { toast } from "sonner";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
 import type { PrintCompanyInfo } from "./voucher-types";
 
 function esc(s: string): string {
@@ -49,7 +49,7 @@ function cellText(v: string | number | null | undefined, num: boolean, currency?
 }
 
 function reportHtml(o: PrintReportOptions): string {
-  const generated = `تاريخ التوليد: ${formatDate(o.generatedAt ?? new Date())}`;
+  const generated = `تاريخ التوليد: ${formatDateDisplay(o.generatedAt ?? new Date())}`;
   const rowsHtml = o.rows.length
     ? o.rows
         .map(

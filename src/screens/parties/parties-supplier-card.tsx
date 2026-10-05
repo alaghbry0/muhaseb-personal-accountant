@@ -10,7 +10,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Phone, Printer, Pencil, Archive, ArchiveRestore, FileText, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { getJson, patchJson } from "@/lib/api";
-import { formatAmount, formatDate, resolvePeriod } from "@/lib/format";
+import { formatAmount, formatDate, formatDateDisplay, resolvePeriod } from "@/lib/format";
 import { useNav } from "@/lib/nav";
 import type { SupplierDto, StatementResult } from "@/domain/parties";
 import type { BootstrapData } from "@/lib/types";
@@ -264,7 +264,7 @@ export default function PartiesSupplierCardScreen({ supplierId }: { supplierId?:
                         {st.rows.map((r, i) => (
                           <tr key={`${r.docNo}-${i}`} className={cn("border-b border-border/30", r.docType === "opening" && "bg-muted/30")}>
                             <td className="py-1.5 font-num text-muted-foreground">
-                              {r.date ? formatDate(r.date) : "—"}
+                              {r.date ? formatDateDisplay(r.date) : "—"}
                             </td>
                             <td className="max-w-28 truncate py-1.5">
                               {r.docNo ? <span className="font-num">{r.docNo}</span> : r.docLabel}
@@ -333,7 +333,7 @@ export default function PartiesSupplierCardScreen({ supplierId }: { supplierId?:
                         <span className="font-num text-[14px] font-bold">{inv.invoiceNo}</span>
                         <StatusChip status={inv.docType === "purchase_return" ? "rejected" : inv.payStatus} label={inv.docType === "purchase_return" ? "مرتجع شراء" : undefined} />
                       </span>
-                      <span className="font-num block text-[12px] text-muted-foreground">{formatDate(inv.issuedAt)}</span>
+                      <span className="font-num block text-[12px] text-muted-foreground">{formatDateDisplay(inv.issuedAt)}</span>
                     </span>
                     <span className="flex flex-col items-end">
                       <AmountText value={inv.total} currency={inv.currencyCode} size="sm" />

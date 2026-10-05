@@ -13,7 +13,7 @@ import {
   Wallet, UserCheck, Coins, Loader2, Phone,
 } from "lucide-react";
 import { getJson, postJson } from "@/lib/api";
-import { formatAmount, formatDate, formatTime12 } from "@/lib/format";
+import { formatAmount, formatDateDisplay, formatTime12 } from "@/lib/format";
 import { useNav } from "@/lib/nav";
 import type { InvoiceDetailDto } from "@/domain/dto";
 import type { BootstrapData as BootType } from "@/lib/types";
@@ -126,7 +126,7 @@ export default function SalesInvoiceDetailsScreen({
             <StatusChip status={inv.payStatus} />
           </div>
           <span className="font-num text-[13px] text-muted-foreground">
-            {formatDate(inv.issuedAt)} — {formatTime12(inv.createdAt)}
+            {formatDateDisplay(inv.issuedAt)} — {formatTime12(inv.createdAt)}
           </span>
 
           {inv.customer ? (

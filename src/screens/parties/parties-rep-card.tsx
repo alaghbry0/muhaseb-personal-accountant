@@ -9,7 +9,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Handshake, Phone, BadgeCheck, TrendingUp } from "lucide-react";
 import { getJson } from "@/lib/api";
-import { formatAmount, formatDate } from "@/lib/format";
+import { formatAmount, formatDateDisplay } from "@/lib/format";
 import { useNav } from "@/lib/nav";
 import {
   AppHeader, AppCard, AmountText, StatusChip, EmptyState, SectionTitle, StatTile, PrimaryButton,
@@ -242,7 +242,7 @@ export default function PartiesRepCardScreen({ repId }: { repId?: number }) {
                           أساس {formatAmount(c.baseAmount, { decimals: 0, showSymbol: false })} × {c.percent}%
                         </span>
                       </span>
-                      <span className="font-num block text-[12px] text-muted-foreground">{formatDate(c.createdAt)}</span>
+                      <span className="font-num block text-[12px] text-muted-foreground">{formatDateDisplay(c.createdAt)}</span>
                     </span>
                     <span className="flex items-center gap-2">
                       <AmountText value={c.amount} currency="YER" size="sm" variant={c.status === "due" ? "due" : "pos"} />

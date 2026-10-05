@@ -8,7 +8,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ScrollText, ChevronDown, ShieldCheck } from "lucide-react";
 import { getJson } from "@/lib/api";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTimeDisplay } from "@/lib/format";
 import { AppHeader, AppCard, EmptyState } from "@/components/ds";
 import { AUDIT_ACTION_LABELS, AUDIT_ACTION_COLORS } from "@/domain/audit";
 import { cn } from "@/lib/utils";
@@ -130,7 +130,7 @@ function AuditCard({ row }: { row: AuditRow }) {
             {label}
           </span>
           <span className="text-[12.5px] leading-5 text-muted-foreground">
-            {row.userName} • {formatDateTime(row.at)}
+            {row.userName} • {formatDateTimeDisplay(row.at)}
             {row.entity ? ` • ${row.entity}${row.entityId != null ? ` #${row.entityId}` : ""}` : ""}
           </span>
         </div>

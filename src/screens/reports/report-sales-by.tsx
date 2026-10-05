@@ -10,6 +10,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGri
 import { BarChart3 } from "lucide-react";
 import { getJson } from "@/lib/api";
 import { formatAmount } from "@/lib/format";
+import { useChartTheme } from "@/lib/chart-theme";
 import { AppHeader, AmountText, SectionTitle, StatTile, TrendBadge } from "@/components/ds";
 import { PeriodPicker, makePeriodState, periodLabel, type PeriodState } from "@/components/reports/period-picker";
 import { ReportTable, ReportToolbar } from "@/components/reports/report-table";
@@ -30,6 +31,8 @@ export default function ReportSalesByScreen() {
   const [dimension, setDimension] = useState<SalesDimension>("customer");
   const [period, setPeriod] = useState<PeriodState>(makePeriodState("month"));
   const { company, baseCurrency } = usePrintCompany();
+  // ألوان الرسم حسب الثيم (داكن = الحالي حرفياً / فاتح = نظائر أدكن مقروءة)
+  const ct = useChartTheme();
 
   const url = `/api/reports/sales-by?dimension=${dimension}&from=${period.from}&to=${period.to}`;
   const { data, isLoading } = useQuery<SalesByReport>({
@@ -153,21 +156,21 @@ export default function ReportSalesByScreen() {
             <div dir="ltr" className="h-48 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 6, right: 6, bottom: 0, left: 6 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
-                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={{ stroke: "#334155" }} tickLine={false} interval={0} angle={-18} dy={8} height={38} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={ct.grid} />
+                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: ct.axisTick }} axisLine={{ stroke: ct.axisLine }} tickLine={false} interval={0} angle={-18} dy={8} height={38} />
                   <YAxis
-                    tick={{ fontSize: 10, fill: "#94A3B8" }}
+                    tick={{ fontSize: 10, fill: ct.axisTick }}
                     axisLine={false}
                     tickLine={false}
                     width={46}
                     tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))}
                   />
                   <Tooltip
-                    contentStyle={{ background: "#1E293B", border: "1px solid #334155", borderRadius: 12, fontSize: 12, direction: "rtl" }}
-                    labelStyle={{ color: "#F1F5F9", fontWeight: 700 }}
+                    contentStyle={{ background: ct.tooltipBg, border: `1px solid ${ct.tooltipBorder}`, borderRadius: 12, fontSize: 12, direction: "rtl", boxShadow: ct.tooltipShadow }}
+                    labelStyle={{ color: ct.tooltipLabelStrong, fontWeight: 700 }}
                     formatter={(value: number | string) => [formatAmount(Number(value)), "المبيعات"]}
                   />
-                  <Bar dataKey="المبيعات" fill="#22D3EE" radius={[4, 4, 0, 0]} maxBarSize={30} />
+                  <Bar dataKey="المبيعات" fill={ct.line1} radius={[4, 4, 0, 0]} maxBarSize={30} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

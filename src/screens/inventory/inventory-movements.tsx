@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { History, PackageSearch } from "lucide-react";
 import { getJson } from "@/lib/api";
-import { formatDate, formatTime12 } from "@/lib/format";
+import { formatDateDisplay, formatTime12 } from "@/lib/format";
 import { useNav } from "@/lib/nav";
 import type { ProductSearchItemDto } from "@/domain/dto";
 import type { BootstrapData as BootType } from "@/lib/types";
@@ -210,7 +210,7 @@ export default function InventoryMovementsScreen({
                 title={<span className="text-[14.5px]">{m.productName}</span>}
                 subtitle={
                   <span className="font-num">
-                    {formatDate(m.movedAt)} · {formatTime12(m.createdAt)} • {m.warehouseName}
+                    {formatDateDisplay(m.movedAt)} · {formatTime12(m.createdAt)} • {m.warehouseName}
                     {m.refNo && <span className="text-primary"> — {m.refNo}</span>}
                   </span>
                 }

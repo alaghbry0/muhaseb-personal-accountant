@@ -116,7 +116,7 @@ export default function SettingsDisplayScreen() {
               {fmt(1234567, { currency: boot?.baseCurrency?.code ?? "YER" })}
             </p>
             <p className="text-[11.5px] leading-5 text-muted-foreground">
-              يُطبَّق فوراً على مبالغ وكميات كل شاشات التطبيق (التواريخ تبقى بالشكل القياسي).
+              يُطبَّق فوراً على مبالغ وكميات وتواريخ العروض في كل شاشات التطبيق (تواريخ حقول الإدخال والتصدير تبقى بالشكل القياسي 0-9).
             </p>
           </div>
         </SettingsSection>

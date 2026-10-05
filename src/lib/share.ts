@@ -5,7 +5,7 @@
  * يبني ملخصاً نصياً عربياً ويفتح wa.me (مع رقم العميل إن وُجد).
  */
 import { toast } from "sonner";
-import { formatAmount, formatDate, formatTime12 } from "@/lib/format";
+import { formatAmount, formatDateDisplay, formatTime12 } from "@/lib/format";
 import type { InvoiceDetailDto } from "@/domain/dto";
 
 /** تطبيع رقم يمني للصيغة الدولية: 777123456 → 967777123456 */
@@ -29,7 +29,7 @@ export function buildInvoiceShareText(
   const lines: string[] = [];
   lines.push(`🏪 ${companyName}`);
   lines.push(`🧾 فاتورة مبيعات رقم: ${invoice.invoiceNo}`);
-  lines.push(`📅 التاريخ: ${formatDate(invoice.issuedAt)} — ${formatTime12(invoice.createdAt)}`);
+  lines.push(`📅 التاريخ: ${formatDateDisplay(invoice.issuedAt)} — ${formatTime12(invoice.createdAt)}`);
   lines.push(`👤 العميل: ${invoice.customer?.name ?? "نقدي"}`);
   lines.push("──────────────");
   lines.push("البنود:");
